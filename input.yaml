@@ -1,10 +1,10 @@
 # model: Sora
-model: Stable Video Diffusion
-# model: WAN2.1
+# model: Stable Video Diffusion
+model: WAN2.1
 # model: cogvideox_5b
 # model: cogvideox_2b
-frame:  81
-input_type: "text" # or "image"
+duration:  81
+fps: 8
 resolution_height:  508
 resolution_witdh: 1088
 denoising_steps: 20

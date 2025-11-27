@@ -54,14 +54,16 @@ pip install -r requirements.txt
 Edit `input.yaml` with your generation parameters:
 
 ```yaml
-model: Mochi                # Model name
-frame: 49                   # Number of frames
-input_type: "text"          # Input type: "text" or "image"
-resolution_height: 480      # Height in pixels
-resolution_witdh: 720       # Width in pixels (note: typo in key name)
-denoising_steps: 50         # Number of denoising steps
-country: France             # Country for emission factor (e.g., France, USA, China)
+model: WAN2.1              # Model name
+duration: 81               # Duration in seconds
+fps: 8                     # Frames per second
+resolution_height: 508     # Height in pixels
+resolution_witdh: 1088     # Width in pixels (note: typo in key name)
+denoising_steps: 20        # Number of denoising steps
+country: France            # Country for emission factor (e.g., France, USA, China)
 ```
+
+**Note:** `frame` is automatically calculated as `duration × fps`
 
 ### 2. Run the Calculator
 
@@ -74,28 +76,28 @@ python run.py
 **Console Output:**
 ```
 📥 INPUTS:
-  Model: Mochi (dit)
-  Steps: 50
-  Resolution: 480x720
-  Frames: 49
+  Model: WAN2.1 (dit)
+  Steps: 20
+  Resolution: 508x1088
+  Frames: 648  # (81s × 8fps)
 
 📊 RESULTS:
-  Energy: 20.25 Wh
-  RunTime: 149.54 s
-  Total emissions: 0.97 gCO2e
+  Energy: 45.32 Wh
+  RunTime: 185.67 s
+  Total emissions: 10.56 gCO2e
 ```
 
 **YAML Output** (saved automatically):
 ```yaml
 inputs:
-  model: Mochi
-  steps: 50
-  resolution: 480x720
-  frames: 49
+  model: WAN2.1
+  steps: 20
+  resolution: 508x1088
+  frames: 648
 results:
-  energy_wh: 20.25
-  runtime: 149.54
-  Total emissions: 0.97  # in gCO2e
+  energy_wh: 45.32
+  runtime: 185.67
+  Total emissions: 10.56  # in gCO2e
 ```
 
 ## How It Works
@@ -105,14 +107,17 @@ results:
 **Energy Model (`prepare_data_wh`)**:
 - Loads experimental data from WAN benchmarks (`exp_wan_all.csv`) and Open-Sora data (`data_55_analysis.csv`)
 - Filters by model type (DiT or U-Net)
-- Combines WAN and Open-Sora datasets
-- Splits into train/test (85%/15%) with `random_state=42` for reproducibility
+- **For DiT models**: Combines WAN and Open-Sora datasets
+- **For U-Net models**: Uses only Open-Sora data
+- Splits into train/test (85%/15%) with fixed random seed for reproducibility
 - **Normalizes features** (steps, resolution, frames) using StandardScaler
 - Saves to `prepared_data_wh.csv` and `future_wh.csv`
 
 **Runtime Model (`prepare_data_duration`)**:
-- Same data sources as energy model
+- Same data sources and filtering logic as energy model
 - Extracts `duration_generate` from WAN and `Duration` from Open-Sora
+- **For DiT**: Combines both datasets
+- **For U-Net**: Uses only Open-Sora data
 - Removes NaN values with `dropna()`
 - Normalizes features and saves to `prepared_data_duration.csv`
 
@@ -259,23 +264,6 @@ def emission_factor(country: str, wh: float, rt: float) -> float:
     Returns:
         float: Total emissions in gCO2e (operational + embodied)
     """
-```
-
-## Model-Specific Constraints
-
-Some models have fixed parameters that are automatically adjusted:
-
-```python
-# CogVideoX-5B / 2B
-- Resolution: 480x720 (fixed)
-- Frames: [9, 17, 25, 33, 41, 49] (closest match)
-
-# CogVideoX-1.5
-- Resolution: 768x1360 (fixed)
-- Frames: [17, 33, 49, 65, 81, 161] (closest match)
-
-# Stable Video Diffusion
-- Resolution: 576x1024 (fixed)
 ```
 
 ## Data Normalization

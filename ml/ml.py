@@ -97,7 +97,6 @@ class CarbonImpactModel:
         res = np.concatenate((res_hf, res_55))
         frames = np.concatenate((frames_hf, frames_55))
         Wh = np.concatenate((Wh_hf, Wh_55))
-
         df = pd.DataFrame({
             'steps': steps,
             'res': res,

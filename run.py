@@ -38,7 +38,8 @@ def get_model_archi(model: str) -> str:
 
 def run():
     cfg = load_yaml("input.yaml")
-    check_dict(cfg, ["model", "frame", "resolution_height", "resolution_witdh", "denoising_steps", "input_type", "country"])
+    check_dict(cfg, ["model", "duration", "fps", "resolution_height", "resolution_witdh", "denoising_steps", "country"])
+    cfg["frame"] = cfg["duration"] * cfg["fps"]
     model_type = get_model_archi(cfg["model"])
     if model_type == "error":
         raise ValueError("Error, model can't be handled or is badly written")
