@@ -1,24 +1,27 @@
 # Video Generation Carbon Emissions Calculator
 
-A machine learning-based tool to estimate **carbon emissions (gCO2e)** for text-to-video generation models, including both operational energy consumption and embodied carbon from hardware manufacturing.
+A production-ready web calculator to estimate **carbon emissions (gCO2e)** for video generation models, including both operational energy consumption and embodied carbon from hardware manufacturing.
 
 ## Overview
 
-This calculator predicts the total carbon footprint of video generation models using Random Forest regressors trained on real benchmark data from DiT (Diffusion Transformer) and U-Net architectures. It combines:
-- **Energy consumption** (Wh) prediction
+This calculator predicts the total carbon footprint of video generation models using regression models trained on real benchmark data. It combines:
+- **Energy consumption** (Wh) prediction based on model parameters
 - **Runtime duration** (seconds) prediction
-- **Operational emissions** (from electricity usage)
-- **Embodied emissions** (from GPU manufacturing, amortized over device lifetime)
+- **Operational emissions** (from electricity usage with country-specific carbon intensity)
+- **Embodied emissions** (from GPU manufacturing, amortized over 3-year device lifetime)
+- **Uncertainty quantification** (95% confidence intervals)
 
 ## Features
 
-- **Dual prediction models**: Separate Random Forests for energy consumption (Wh) and runtime (seconds)
-- **Complete carbon footprint**: Operational + embodied emissions
-- **Country-specific emission factors**: Uses national electricity carbon intensity
+- **Dual prediction models**: Separate scikit-learn regressors for energy (Wh) and duration (seconds)
+- **Model comparison**: Tests 6 regression algorithms (LinearRegression, Ridge, SVR, ExtraTrees, RandomForest, GradientBoosting) and selects best per architecture
+- **Adaptive selection**: Prefers tree-based models for large datasets (better extrapolation), stability-based selection for small datasets
+- **Complete carbon footprint**: Operational + embodied emissions with uncertainty bounds
+- **Country-specific emission factors**: Uses national electricity carbon intensity (233 gCO2/kWh for France default)
 - **Support for 20+ models** including Sora, Mochi, CogVideoX, WAN2.1, Stable Video Diffusion, etc.
-- **Separate models** for DiT and U-Net architectures
-- **Input validation** with zero-handling and model-specific constraints
-- **YAML-based** configuration
+- **Separate models** for DiT, CogVideo, and U-Net architectures
+- **Fixed parameters**: Denoising steps (50) and FPS (24)
+- **YAML-based configuration** with optional input_type selection
 
 ## Supported Models
 
@@ -54,16 +57,23 @@ pip install -r requirements.txt
 Edit `input.yaml` with your generation parameters:
 
 ```yaml
-model: WAN2.1              # Model name
-duration: 81               # Duration in seconds
-fps: 8                     # Frames per second
-resolution_height: 508     # Height in pixels
-resolution_witdh: 1088     # Width in pixels (note: typo in key name)
-denoising_steps: 20        # Number of denoising steps
-country: France            # Country for emission factor (e.g., France, USA, China)
+# ============================================================
+# VIDEO GENERATION CARBON CALCULATOR - Configuration
+# ============================================================
+
+model: CogVideoX-5B        # Model name (see supported models below)
+duration: 2                # Duration in seconds
+resolution_height: 480     # Height in pixels
+resolution_witdh: 720      # Width in pixels
+input_type: text           # text or image (optional, defaults to text)
+country: France            # Country for emission factor
 ```
 
-**Note:** `frame` is automatically calculated as `duration × fps`
+**Fixed Parameters (coded in `run.py`):**
+- `denoising_steps`: 50 (fixed for optimal performance)
+- `fps`: 24 (fixed, total_frames = duration × 24)
+
+**Note:** `total_frames` is automatically calculated as `duration × FPS` where FPS=24
 
 ### 2. Run the Calculator
 
@@ -73,236 +83,221 @@ python run.py
 
 ### 3. View Results
 
-**Console Output:**
+**Console Output Example:**
 ```
 📥 INPUTS:
-  Model: WAN2.1 (dit)
-  Steps: 20
-  Resolution: 508x1088
-  Frames: 648  # (81s × 8fps)
+  Model: CogVideoX-5B (cog, 5.0B params)
+  Steps: 50
+  Resolution: 480x720
+  Frames: 48  # (2s duration × 24fps)
 
 📊 RESULTS:
-  Energy: 45.32 Wh
-  RunTime: 185.67 s
-  Total emissions: 10.56 gCO2e
+  Energy: 5.63 ± 1.57 Wh
+    Model: SVR_rbf (R²=0.988)
+    95% interval: 2.00 - 9.96 Wh
+
+  Duration: 147.32 ± 69.90 s (2.46 min)
+    Model: ExtraTrees (R²=0.937)
+    95% interval: 4.00 - 340.77 s
+
+  Carbon emissions: 0.48 gCO2e
+    95% interval: 0.04 - 1.01 gCO2e
 ```
 
-**YAML Output** (saved automatically):
-```yaml
-inputs:
-  model: WAN2.1
-  steps: 20
-  resolution: 508x1088
-  frames: 648
-results:
-  energy_wh: 45.32
-  runtime: 185.67
-  Total emissions: 10.56  # in gCO2e
+**JSON Output** (returned as Python dict):
+```python
+{
+  'inputs': {
+    'model': 'CogVideoX-5B',
+    'steps': 50,
+    'resolution': '480x720',
+    'frames': 48
+  },
+  'predictions': {
+    'energy': {
+      'value_wh': 5.63,
+      'uncertainty_wh': 1.57,
+      'margin_95_wh': 7.63,
+      'best_case_wh': 2.00,
+      'worst_case_wh': 9.96,
+      'model': 'SVR_rbf',
+      'r2': 0.988
+    },
+    'duration': {
+      'value_s': 147.32,
+      'value_min': 2.46,
+      'uncertainty_s': 69.90,
+      'margin_95_s': 192.45,
+      'best_case_s': 4.00,
+      'worst_case_s': 340.77,
+      'model': 'ExtraTrees',
+      'r2': 0.937
+    },
+    'carbon': {
+      'value_gco2e': 0.48,
+      'best_case_gco2e': 0.04,
+      'worst_case_gco2e': 1.01
+    }
+  }
+}
 ```
 
 ## How It Works
 
-### 1. Data Preparation (`ml.py`)
+### 1. Data Preparation
 
-**Energy Model (`prepare_data_wh`)**:
-- Loads experimental data from WAN benchmarks (`exp_wan_all.csv`) and Open-Sora data (`data_55_analysis.csv`)
-- Filters by model type (DiT or U-Net)
-- **For DiT models**: Combines WAN and Open-Sora datasets
-- **For U-Net models**: Uses only Open-Sora data
-- Splits into train/test (85%/15%) with fixed random seed for reproducibility
-- **Normalizes features** (steps, resolution, frames) using StandardScaler
-- Saves to `prepared_data_wh.csv` and `future_wh.csv`
+**Energy Data** (`prepared_data.csv`):
+- Loads from `ml/data/prepared_data.csv` (pre-processed)
+- Features: `steps`, `res` (total pixels), `frames`, `params` (model size in billions)
+- One-hot encodes `Input type` (text/image)
+- Target: `Wh` (Watt-hours)
 
-**Runtime Model (`prepare_data_duration`)**:
-- Same data sources and filtering logic as energy model
-- Extracts `duration_generate` from WAN and `Duration` from Open-Sora
-- **For DiT**: Combines both datasets
-- **For U-Net**: Uses only Open-Sora data
-- Removes NaN values with `dropna()`
-- Normalizes features and saves to `prepared_data_duration.csv`
+**Duration Data** (`prepared_data.csv`):
+- Same dataset, different target
+- Features: `steps`, `res`, `frames`, `params`, `input_type`
+- Target: `duration` (seconds)
 
-### 2. Model Training
+### 2. Model Training & Selection
 
-- **Algorithm:** Random Forest Regressor (250 trees, `random_state=42`, `n_jobs=-1`)
-- **Two separate models:**
-  1. **Energy model** (`carbon_impact_model_{dit|unet}.joblib`): Predicts Wh consumption
-  2. **Runtime model** (`run_time_model_{dit|unet}.joblib`): Predicts execution time in seconds
-- **Features:** 
-  - `steps`: Number of denoising steps
-  - `res`: Total pixels (height × width)
-  - `frames`: Number of frames generated
-- **Targets:** 
-  - Energy consumption in Watt-hours (Wh)
-  - Runtime in seconds (s)
+**Architecture:** Separate models for `dit`, `cog`, and `unet`
+
+**Algorithm Comparison:**
+Tests 6 regressors per architecture:
+1. LinearRegression
+2. Ridge (α=1.0)
+3. SVR (RBF kernel, C=100, ε=0.1)
+4. ExtraTrees (100 trees, max_depth=10)
+5. RandomForest (100 trees, max_depth=10)
+6. GradientBoosting (100 trees, max_depth=5, learning_rate=0.1)
+
+**Model Selection Logic:**
+- **Large datasets (n ≥ 100)**: Prefer tree-based models (ExtraTrees, RandomForest, GradientBoosting)
+  - Reason: Better extrapolation beyond training range
+  - LinearRegression/Ridge avoid due to poor extrapolation
+- **Small datasets (n < 100)**: Prioritize stability
+  - Filter models with overfitting gap ≤ 0.08 (R² - CV_R² ≤ 0.08)
+  - Among stable models, select lowest MAE
+  - Fallback: lowest gap, then lowest MAE
+
+**Metrics Tracked:**
+- R² score (test set)
+- MAE (Mean Absolute Error)
+- RMSE (Root Mean Squared Error)
+- CV R² (5-fold cross-validation)
 
 ### 3. Prediction Pipeline
 
-```python
-Input → Validation → Normalization → Random Forest → Energy (Wh) + Runtime (s)
-                                                              ↓
-                                    Emission Factor Calculation
-                                                              ↓
-                              Operational CO2 + Embodied CO2 → Total gCO2e
+```
+Input (steps, res, frames, params, input_type)
+         ↓
+Input Validation (all > 0)
+         ↓
+Load Cached Models or Train If Missing
+         ↓
+StandardScaler Normalization
+         ↓
+Regression Model Prediction
+         ↓
+Energy (Wh) + Duration (s) predictions with uncertainty
+         ↓
+Apply Safety Floors: max(MIN_WH=2.0, pred_wh), max(MIN_DURATION=4.0, pred_s)
+         ↓
+Calculate 3 Carbon Scenarios (current, best case, worst case)
+         ↓
+Return JSON with predictions, uncertainties, R² scores
 ```
 
 **Validation Rules:**
-- If `frames ≤ 0` → Return 0 gCO2e
-- If `resolution ≤ 0` → Return 0 gCO2e
-- If `steps ≤ 0` → Return 0 gCO2e
+- If any input ≤ 0 → Return error
+- Energy predictions: `max(2.0 Wh, prediction)`
+- Duration predictions: `max(4.0 s, prediction)`
+- Carbon emissions: `max(0.01 gCO2e, prediction)`
 
-### 4. Carbon Emissions Calculation (`emission_factor` function)
+**Uncertainty Quantification:**
+- **Margin calculation:** 1.96 × RMSE (95% confidence interval)
+- **Best case:** prediction - margin (lower bound)
+- **Worst case:** prediction + margin (upper bound)
+- **Floor protection:** All intervals clamped to minimum values
+
+### 4. Carbon Emissions Calculation
 
 **Formula:**
-```python
+```
 # 1. Operational emissions (from electricity consumption)
-country_factor = emission_factor_csv[country]  # gCO2/kWh
-carbone_operational = country_factor × (Wh / 1000)  # gCO2
+country_factor = emission_factor_csv[country]  # gCO2/kWh (default: France = 233)
+operational_co2 = country_factor × (Wh / 1000)  # gCO2
 
 # 2. Embodied emissions (from GPU manufacturing)
-GPU_EMBODIED_CO2 = 143 kgCO2e  # NVIDIA A100 fabrication
-GPU_LIFETIME = 3 years
+GPU_EMBODIED_CO2 = 143.0  # kgCO2e (NVIDIA A100)
+GPU_LIFETIME_YEARS = 3.0
 GPU_UTILIZATION = 0.75
 
 seconds_in_3_years = 60 × 60 × 24 × 365.25 × 3
-carbone_embodied = (runtime_s / seconds_in_3_years) / 0.75 × 143 × 1000  # gCO2
+embodied_co2 = (runtime_s / seconds_in_3_years) / 0.75 × 143.0 × 1000  # gCO2
 
 # 3. Total emissions
-total_emissions = carbone_operational + carbone_embodied  # gCO2e
+total_emissions = operational_co2 + embodied_co2  # gCO2e
 ```
 
-**Emission Factors:**
-- Loaded from `carbone_kwh_country.csv`
-- Country-specific electricity carbon intensity (gCO2/kWh)
-- Examples: France (233), USA (389), China (555)
-- Default fallback: France (233 gCO2/kWh)
-
-### 5. Model Selection
-
-The calculator automatically loads the appropriate models:
-- **DiT models** → `carbon_impact_model_dit.joblib` + `run_time_model_dit.joblib`
-- **U-Net models** → `carbon_impact_model_unet.joblib` + `run_time_model_unet.joblib`
+**Emission Factors by Country:**
+- France: 233 gCO2/kWh
+- USA: 389 gCO2/kWh
+- China: 555 gCO2/kWh
+- Germany: 380 gCO2/kWh
+- Default (unknown country): 233 gCO2/kWh (France)
 
 ## Model Performance
 
 Typical performance metrics vary by model type and target:
 
-**Energy Model (Wh prediction):**
-- Random Forest with 250 trees
-- Trained on normalized features
-- Performance depends on training data quality
 
-**Runtime Model (Duration prediction):**
-- Random Forest with 250 trees
-- Handles variable-length datasets
-- NaN values removed during preprocessing
 
-## Architecture
+## Project Structure
 
 ```
 final_prog/
-├── run.py                  # Main entry point
-├── input.yaml             # User configuration
-├── utils.py               # YAML loading utilities
+├── run.py                          # Main entry point (fixed FPS=24, steps=50)
+├── input.yaml                      # User configuration (model, duration, resolution, input_type)
+├── utils.py                        # YAML loading and validation utilities
+├── readme.md                       # This file
+│
 ├── ml/
-│   ├── ml.py              # CarbonImpactModel class
-│   ├── compute_wh.py      # Prediction and emission calculation
+│   ├── compute_wh.py              # Main prediction orchestration + carbon calculation
+│   ├── ml_wh.py                   # VideoEnergyPredictor class (6 algorithm comparison)
+│   ├── ml_duration.py             # VideoDurationPredictor class (6 algorithm comparison)
+│   │
 │   ├── data/
-│   │   ├── exp_wan_all.csv              # WAN benchmark data
-│   │   ├── data_55_analysis.csv         # Open-Sora benchmark data
-│   │   ├── carbone_kwh_country.csv      # Country emission factors
-│   │   ├── prepared_data_wh.csv         # Normalized energy training data
-│   │   ├── prepared_data_duration.csv   # Normalized runtime training data
-│   │   ├── future_wh.csv                # Energy test set
-│   │   └── future_duration.csv          # Runtime test set (optional)
+│   │   ├── prepared_data.csv           # Combined training data (steps, res, frames, params, duration, Wh, Input type)
+│   │   └── carbone_kwh_country.csv     # Country emission factors (gCO2/kWh)
+│   │
 │   └── model/
-│       ├── carbon_impact_model_dit.joblib   # DiT energy model + scaler
-│       ├── run_time_model_dit.joblib        # DiT runtime model + scaler
-│       ├── carbon_impact_model_unet.joblib  # U-Net energy model + scaler
-│       └── run_time_model_unet.joblib       # U-Net runtime model + scaler
+│       ├── best_models_wh.joblib               # Cached energy models dict for all architectures
+│       ├── best_models_duration.joblib         # Cached duration models dict for all architectures
+│       ├── best_model_wh_dit.joblib            # DiT energy model
+│       ├── best_model_wh_cog.joblib            # CogVideo energy model
+│       ├── best_model_wh_unet.joblib           # U-Net energy model
+│       ├── best_model_duration_dit.joblib      # DiT duration model
+│       ├── best_model_duration_cog.joblib      # CogVideo duration model
+│       ├── best_model_duration_unet.joblib     # U-Net duration model
+│       ├── scaler_wh_dit.joblib                # Energy scaler (DiT)
+│       └── ... (scaler files for each arch)
 ```
 
-## Key Components
+**Cache Auto-Generation:**
+- First run: `best_models_wh.joblib` and `best_models_duration.joblib` are created
+- These files store the best model + metrics for each architecture
+- Subsequent runs load from cache (~3.3s vs ~35s)
 
-### `CarbonImpactModel` Class
+## Summary
 
-**Methods:**
-- `prepare_data_wh(model_type)`: Load, combine, normalize energy datasets
-- `prepare_data_duration(model_type)`: Load, combine, normalize runtime datasets
-- `train(to_pred)`: Train Random Forest model on prepared data
-- `predict(future_file)`: Predict for new data from CSV file
-- `save_model()`: Persist model + scaler to disk using joblib
-- `add_energy_metrics(df)`: Convert WAN benchmark energy units to Wh
+| Component | Description |
+|-----------|-------------|
+| **Prediction** | Tests 6 algorithms, selects best per architecture |
+| **Caching** | Models saved on first run (~35s), loaded on subsequent runs (~3.3s) |
+| **Energy** | Predicts Wh with 95% confidence interval |
+| **Duration** | Predicts seconds with 95% confidence interval |
+| **Carbon** | Operational (electricity) + Embodied (GPU manufacturing) |
+| **Safety** | Minimum floors: 2.0 Wh, 4.0 s, 0.01 gCO2e |
+| **Scalability** | Supports 20+ video generation models across 3 architectures |
 
-### `run_ml()` Function
 
-Main prediction interface:
-```python
-def run_ml(to_pred: np.ndarray, model_type: str, country: str, new_random_forest=False):
-    """
-    Args:
-        to_pred: [steps, resolution, frames]
-        model_type: "dit" or "unet"
-        country: Country name for emission factor (e.g., "France", "USA")
-        new_random_forest: Force retraining
-    
-    Returns:
-        tuple: (energy_wh: float, runtime_s: float, total_emissions_gCO2e: float)
-    """
-```
-
-### `emission_factor()` Function
-
-Calculates total carbon emissions:
-```python
-def emission_factor(country: str, wh: float, rt: float) -> float:
-    """
-    Args:
-        country: Country for emission factor lookup
-        wh: Energy consumption in Watt-hours
-        rt: Runtime in seconds
-    
-    Returns:
-        float: Total emissions in gCO2e (operational + embodied)
-    """
-```
-
-## Data Normalization
-
-**Critical:** The model uses `StandardScaler` to normalize inputs during training. The same scaler is saved with the model and automatically applied during prediction.
-
-**Training:**
-```python
-scaler.fit(X_train)  # Learn mean and std
-X_normalized = scaler.transform(X_train)
-model.fit(X_normalized, y)
-```
-
-**Prediction:**
-```python
-X_new_normalized = scaler.transform(X_new)  # Apply same transformation
-y_pred = model.predict(X_new_normalized)
-```
-
-## Retraining the Model
-
-To retrain with new data:
-
-```python
-from ml.compute_wh import run_ml
-import numpy as np
-
-# Force retraining
-result = run_ml(
-    to_pred=np.array([50, 1920*1080, 24]),
-    model_type="dit",
-    country="France",
-    new_random_forest=True  # Triggers retraining
-)
-# Returns: (energy_wh, runtime_s, total_emissions_gCO2e)
-```
-
-## Limitations
-
-1. **Extrapolation:** The model may be less accurate for parameters far outside the training data range
-2. **Architecture-specific:** Performance varies between DiT and U-Net models
-3. **Hardware-agnostic:** Does not account for specific GPU/hardware configurations
