@@ -1,6 +1,6 @@
 """
 Video Generation Energy (Wh) Predictor
-Tests multiple regression models for each architecture (dit, cog, unet)
+Tests multiple regression models for each architecture (dit, hybrid, unet)
 Models: LinearRegression, Ridge, SVR, ExtraTrees, RandomForest, GradientBoosting
 """
 
@@ -18,7 +18,7 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 class VideoEnergyPredictor:
     def __init__(self, data_file="prepared_data.csv"):
         self.data_file = data_file
-        self.base_features = ['steps', 'res', 'frames', 'params']
+        self.base_features = ['steps', 'res', 'frames', 'params', 'duration', 'fps']
         self.feature_cols = None
         self.results = {}
         self.best_models = {}
@@ -106,7 +106,7 @@ class VideoEnergyPredictor:
                     'model_obj': model,
                     'scaler': scaler
                 })
-            except Exception as e:
+            except Exception:
                 pass
 
         # Store results
@@ -126,7 +126,7 @@ class VideoEnergyPredictor:
             joblib.dump(best['model_obj'], model_path)
             joblib.dump(best['scaler'], scaler_path)
 
-    def predict(self, arch, steps, res, frames, params, input_type="text"):
+    def predict(self, arch, steps, res, frames, fps, duration, params, input_type="text"):
         """Make prediction with uncertainty"""
         try:
             model = joblib.load(f"./ml/model/best_model_wh_{arch}.joblib")
@@ -137,7 +137,7 @@ class VideoEnergyPredictor:
             input_image = 1 if input_type.lower() == "image" else 0
             input_text = 1 if input_type.lower() == "text" else 0
 
-            X = np.array([[steps, res, frames, params, input_image, input_text]])
+            X = np.array([[steps, res, frames, params, duration, fps, input_image, input_text]])
             X_scaled = scaler.transform(X)
             pred = model.predict(X_scaled)[0]
             pred = max(0, pred)  # No negative energy

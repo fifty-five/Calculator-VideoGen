@@ -1,7 +1,7 @@
 """
-Video Generation Duration Predictor
-Tests multiple regression models for each architecture (dit, cog, unet)
-Predicts: Duration (seconds)
+Video Generation run_time Predictor
+Tests multiple regression models for each architecture (dit, hybrid, unet)
+Predicts: run_time (seconds)
 Models: LinearRegression, Ridge, SVR, ExtraTrees, RandomForest, GradientBoosting
 """
 
@@ -16,10 +16,10 @@ from sklearn.svm import SVR
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
 
-class VideoDurationPredictor:
+class Videorun_timePredictor:
     def __init__(self, data_file="prepared_data.csv"):
         self.data_file = data_file
-        self.base_features = ['steps', 'res', 'frames', 'params']
+        self.base_features = ['steps', 'res', 'frames', 'params', 'duration', 'fps']
         self.feature_cols = None
         self.results = {}
         self.best_models = {}
@@ -71,7 +71,7 @@ class VideoDurationPredictor:
 
         df_arch = df_arch.dropna().reset_index(drop=True)
         X = df_arch[self.feature_cols]
-        y = df_arch['duration']
+        y = df_arch['run_time']
 
         X_train, X_test, y_train, y_test = train_test_split(
             X, y, test_size=0.25, random_state=42
@@ -140,30 +140,30 @@ class VideoDurationPredictor:
         """Save best models"""
         for arch in self.best_models:
             best = self.best_models[arch]
-            model_path = f"./ml/model/best_model_duration_{arch}.joblib"
-            scaler_path = f"./ml/model/scaler_duration_{arch}.joblib"
+            model_path = f"./ml/model/best_model_run_time_{arch}.joblib"
+            scaler_path = f"./ml/model/scaler_run_time_{arch}.joblib"
             joblib.dump(best['model_obj'], model_path)
             joblib.dump(best['scaler'], scaler_path)
 
-    def predict(self, arch, steps, res, frames, params, input_type="text"):
+    def predict(self, arch, steps, res, frames, fps, duration, params, input_type="text"):
         """Make prediction with uncertainty"""
         try:
-            model = joblib.load(f"./ml/model/best_model_duration_{arch}.joblib")
-            scaler = joblib.load(f"./ml/model/scaler_duration_{arch}.joblib")
+            model = joblib.load(f"./ml/model/best_model_run_time_{arch}.joblib")
+            scaler = joblib.load(f"./ml/model/scaler_run_time_{arch}.joblib")
             best = self.best_models[arch]
 
             # Prepare features
             input_image = 1 if input_type.lower() == "image" else 0
             input_text = 1 if input_type.lower() == "text" else 0
 
-            X = np.array([[steps, res, frames, params, input_image, input_text]])
+            X = np.array([[steps, res, frames, fps, duration, params, input_image, input_text]])
             X_scaled = scaler.transform(X)
             pred = model.predict(X_scaled)[0]
-            pred = max(0, pred)  # No negative durations
+            pred = max(0, pred)  # No negative run_times
 
             return {
-                "duration_s": round(pred, 2),
-                "duration_min": round(pred / 60, 2),
+                "run_time_s": round(pred, 2),
+                "run_time_min": round(pred / 60, 2),
                 "uncertainty_s": round(best['mae'], 2),
                 "margin_95_s": round(1.96 * best['rmse'], 2),
                 "r2_score": round(best['r2'], 3),

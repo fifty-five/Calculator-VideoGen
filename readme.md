@@ -19,7 +19,7 @@ This calculator predicts the total carbon footprint of video generation models u
 - **Complete carbon footprint**: Operational + embodied emissions with uncertainty bounds
 - **Country-specific emission factors**: Uses national electricity carbon intensity (233 gCO2/kWh for France default)
 - **Support for 20+ models** including Sora, Mochi, CogVideoX, WAN2.1, Stable Video Diffusion, etc.
-- **Separate models** for DiT, CogVideo, and U-Net architectures
+- **Separate models** for DiT, hybrid, and U-Net architectures
 - **Fixed parameters**: Denoising steps (50) and FPS (24)
 - **YAML-based configuration** with optional input_type selection
 
@@ -28,7 +28,6 @@ This calculator predicts the total carbon footprint of video generation models u
 ### DiT Architecture
 - Sora, Veo, Latte
 - WAN2.1, WAN2.2
-- CogVideoX (5B, 2B, 1.5)
 - Mochi, Runway Gen-4
 - ContentV, MAGI-1
 
@@ -38,6 +37,9 @@ This calculator predicts the total carbon footprint of video generation models u
 - Runway (Gen-1, Gen-2)
 - Pika, ModelScopeT2V
 - Lumiere, MagicVideoazy
+
+### Hybrids
+- CogVideoX (5B, 2B, 1.5)
 
 ## Installation
 
@@ -86,7 +88,7 @@ python run.py
 **Console Output Example:**
 ```
 📥 INPUTS:
-  Model: CogVideoX-5B (cog, 5.0B params)
+  Model: CogVideoX-5B (hybrid, 5.0B params)
   Steps: 50
   Resolution: 480x720
   Frames: 48  # (2s duration × 24fps)
@@ -159,7 +161,7 @@ python run.py
 
 ### 2. Model Training & Selection
 
-**Architecture:** Separate models for `dit`, `cog`, and `unet`
+**Architecture:** Separate models for `dit`, `hybrid`, and `unet`
 
 **Algorithm Comparison:**
 Tests 6 regressors per architecture:
@@ -274,10 +276,10 @@ final_prog/
 │       ├── best_models_wh.joblib               # Cached energy models dict for all architectures
 │       ├── best_models_duration.joblib         # Cached duration models dict for all architectures
 │       ├── best_model_wh_dit.joblib            # DiT energy model
-│       ├── best_model_wh_cog.joblib            # CogVideo energy model
+│       ├── best_model_wh_hybrid.joblib            # hybrid energy model
 │       ├── best_model_wh_unet.joblib           # U-Net energy model
 │       ├── best_model_duration_dit.joblib      # DiT duration model
-│       ├── best_model_duration_cog.joblib      # CogVideo duration model
+│       ├── best_model_duration_hybrid.joblib      # hybrid duration model
 │       ├── best_model_duration_unet.joblib     # U-Net duration model
 │       ├── scaler_wh_dit.joblib                # Energy scaler (DiT)
 │       └── ... (scaler files for each arch)
