@@ -89,21 +89,26 @@ python run.py
 ```
 📥 INPUTS:
   Model: CogVideoX-5B (hybrid, 5.0B params)
-  Steps: 50
-  Resolution: 480x720
-  Frames: 48  # (2s duration × 24fps)
+  Steps: 60
+  Resolution: 576x1024
+  Frames: 48
 
 📊 RESULTS:
-  Energy: 5.63 ± 1.57 Wh
-    Model: SVR_rbf (R²=0.988)
-    95% interval: 2.00 - 9.96 Wh
+  Energy: 31.14 ± 1.93 Wh
+    Model: SVR_rbf (R²=0.982)
+    95% interval: 25.90 - 36.38 Wh
 
-  Duration: 147.32 ± 69.90 s (2.46 min)
-    Model: ExtraTrees (R²=0.937)
-    95% interval: 4.00 - 340.77 s
+  run_time: 855.90 ± 62.87 s (14.26 min)
+    Model: ExtraTrees (R²=0.943)
+    95% interval: 672.97 - 1038.83 s
 
-  Carbon emissions: 0.48 gCO2e
-    95% interval: 0.04 - 1.01 gCO2e
+  Carbon emissions: 21.25 gCO2e
+    Embodied: 1.72 gCO2e
+    Electricity: 19.53 gCO2e
+    95% interval: 17.60 - 24.91 gCO2e
+
+  Water used: 0.02 L
+    95% interval: 0.01 - 0.02 L
 ```
 
 **JSON Output** (returned as Python dict):
@@ -140,6 +145,11 @@ python run.py
       'best_case_gco2e': 0.04,
       'worst_case_gco2e': 1.01
     }
+    'water_used': {
+      'value_water_used': 0.02,
+      'best_case_water_used': 0.01,
+      'worst_case_water_used': 0.03
+    }
   }
 }
 ```
@@ -166,11 +176,11 @@ python run.py
 **Algorithm Comparison:**
 Tests 6 regressors per architecture:
 1. LinearRegression
-2. Ridge (α=1.0)
-3. SVR (RBF kernel, C=100, ε=0.1)
-4. ExtraTrees (100 trees, max_depth=10)
-5. RandomForest (100 trees, max_depth=10)
-6. GradientBoosting (100 trees, max_depth=5, learning_rate=0.1)
+2. Ridge
+3. SVR
+4. ExtraTrees
+5. RandomForest
+6. GradientBoosting
 
 **Model Selection Logic:**
 - **Large datasets (n ≥ 100)**: Prefer tree-based models (ExtraTrees, RandomForest, GradientBoosting)
@@ -225,11 +235,15 @@ Return JSON with predictions, uncertainties, R² scores
 
 **Formula:**
 ```
-# 1. Operational emissions (from electricity consumption)
-country_factor = emission_factor_csv[country]  # gCO2/kWh (default: France = 233)
+# 1. Power usage effectiveness
+PUE = 1.56
+wh_w_pue = wh * PUE  # wh
+
+# 2. Operational emissions (from electricity consumption)
+country_factor = emission_factor_csv[country]  # gCO2/kWh
 operational_co2 = country_factor × (Wh / 1000)  # gCO2
 
-# 2. Embodied emissions (from GPU manufacturing)
+# 3. Embodied emissions (from GPU manufacturing)
 GPU_EMBODIED_CO2 = 143.0  # kgCO2e (NVIDIA A100)
 GPU_LIFETIME_YEARS = 3.0
 GPU_UTILIZATION = 0.75
@@ -237,16 +251,20 @@ GPU_UTILIZATION = 0.75
 seconds_in_3_years = 60 × 60 × 24 × 365.25 × 3
 embodied_co2 = (runtime_s / seconds_in_3_years) / 0.75 × 143.0 × 1000  # gCO2
 
-# 3. Total emissions
+# 4. Water used
+water_usage =  0.35L/kWh
+water_used = wh_w_pue / 1000 * water_usage
+
+# 5. Total emissions
 total_emissions = operational_co2 + embodied_co2  # gCO2e
 ```
 
 **Emission Factors by Country:**
-- France: 233 gCO2/kWh
-- USA: 389 gCO2/kWh
-- China: 555 gCO2/kWh
-- Germany: 380 gCO2/kWh
-- Default (unknown country): 233 gCO2/kWh (France)
+- France: 33 gCO2/kWh
+- USA: 402 gCO2/kWh
+- China: 541 gCO2/kWh
+- Germany: 333 gCO2/kWh
+- Default (unknown country): 220 gCO2/kWh (Glbal avg server EF for electricity)
 
 ## Model Performance
 
@@ -299,7 +317,7 @@ final_prog/
 | **Energy** | Predicts Wh with 95% confidence interval |
 | **Duration** | Predicts seconds with 95% confidence interval |
 | **Carbon** | Operational (electricity) + Embodied (GPU manufacturing) |
-| **Safety** | Minimum floors: 2.0 Wh, 4.0 s, 0.01 gCO2e |
+| **Safety** | Minimum floors: 2.0 Wh, 4.0 s, 0.01 gCO2e | (based on the data minimum)
 | **Scalability** | Supports 20+ video generation models across 3 architectures |
 
 

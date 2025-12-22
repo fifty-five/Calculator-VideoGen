@@ -8,6 +8,8 @@ import os
 def emission_factor(country: str, wh: float, run_time: float) -> tuple:
     emission_factor_csv = pd.read_csv("./ml/data/carbone_kwh_country.csv", header=0)
     PUE = 1.56
+    WATER_USAGE = 0.35  # L/ kWh
+
     wh_w_pue = wh * PUE
     try:
         country_factor = emission_factor_csv.loc[emission_factor_csv["country"] == country]["Emission factor"].values[0]
@@ -17,7 +19,7 @@ def emission_factor(country: str, wh: float, run_time: float) -> tuple:
     GPU_LIFETIME_YEARS = 3.0
     GPU_UTILIZATION = 0.75
     carbon_electricity = country_factor * (wh_w_pue / 1000)  # gCO2
-    water_used = wh_w_pue / 1000 * 0.35  # l/kWh
+    water_used = wh_w_pue / 1000 * WATER_USAGE  # l/kWh
 
     seconds_in_3_years = 60 * 60 * 24 * 365.25 * GPU_LIFETIME_YEARS
     carbon_embodied = ((run_time / seconds_in_3_years) / GPU_UTILIZATION * GPU_EMBODIED_CO2) * 1000  # gCO2e
