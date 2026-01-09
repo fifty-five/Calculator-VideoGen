@@ -1,3 +1,5 @@
 **/__pycache__/
 ./ml/model/*
 **/vscode/
+all_models.py
+result_all_models.csv

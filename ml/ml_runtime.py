@@ -68,6 +68,8 @@ class Videorun_timePredictor:
         if n_samples < 5:
             self.results[arch_name] = {}
             return
+        if arch_name == "hybrid":
+            df_arch["frames"] = np.ceil(df_arch['frames'] / 49)
 
         df_arch = df_arch.dropna().reset_index(drop=True)
         X = df_arch[self.feature_cols]
@@ -108,7 +110,7 @@ class Videorun_timePredictor:
                     'model_obj': model,
                     'scaler': scaler
                 })
-            except Exception as e:
+            except Exception:
                 pass
 
         # Store results

@@ -9,7 +9,6 @@ def get_model_archi(model: str) -> dict:
         # --- UNet models ---
         "AnimateDiff": {"arch": "unet", "params": 0.9},
         "Stable Video Diffusion": {"arch": "unet", "params": 1.5},
-        "Runway Gen-2": {"arch": "unet", "params": 1.5},
         "Pika 1.0": {"arch": "unet", "params": 1.5},
         "ModelScopeT2V": {"arch": "unet", "params": 1.7},
         "Lumiere": {"arch": "unet", "params": 5.0},
@@ -20,7 +19,6 @@ def get_model_archi(model: str) -> dict:
         "WAN2.1-T2V-1.3B": {"arch": "dit", "params": 1.3},
         "WAN2.1-T2V-14B": {"arch": "dit", "params": 14.0},
         "Mochi 1": {"arch": "dit", "params": 10.0},
-        "MAGI-1": {"arch": "dit", "params": 24.0},
         "ContentV": {"arch": "dit", "params": 8.0},
         "VEO": {"arch": "dit", "params": 10.0},
         "Latte-XL": {"arch": "dit", "params": 0.67},

@@ -1,23 +1,9 @@
-# ============================================================
-# VIDEO GENERATION CARBON CALCULATOR - Configuration
-# ============================================================
-
-# Model selection
-model: CogVideoX-5B
-# Autres modèles disponibles:
-# - DiT: Sora, Latte-XL, WAN2.1-T2V-1.3B, WAN2.1-T2V-14B, ContentV, MAGI-1,
-#       Mochi 1, VEO
-# - U-Net: AnimateDiff, Stable Video Diffusion, Runway Gen-2,
-#          Pika 1.0, ModelScopeT2V, Lumiere, MagicVideo-V2
-# - Hybrid:  CogVideoX-5B, CogVideoX-2B
-
-# Video parameters
-duration: 2     # seconds
-resolution_height: 576
-resolution_witdh: 1024
-input_type: image      # text or image
-denoising_steps: 60
-fps: 24
-
-# Region for carbon intensity
 country: United States
+denoising_steps: 20
+duration: 8
+fps: 24
+input_type: image
+model: CogVideoX-2B
+resolution_height: 720
+resolution_witdh: 1280
+steps: 50

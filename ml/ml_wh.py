@@ -61,12 +61,13 @@ class VideoEnergyPredictor:
         df = pd.read_csv(self.data_file)
         df = self.prepare_features(df)
 
-        df_arch = df[df['architecture'] == arch_name]
+        df_arch = df[df['architecture'] == arch_name].copy()
         n_samples = len(df_arch)
-
         if n_samples < 5:
             self.results[arch_name] = {}
             return
+        if arch_name == "hybrid":
+            df_arch["frames"] = np.ceil(df_arch['frames'] / 49)
 
         X = df_arch[self.feature_cols]
         y = df_arch['Wh']
@@ -112,10 +113,15 @@ class VideoEnergyPredictor:
         # Store results
         self.results[arch_name] = arch_results
 
-        # Find best model
-        if arch_results:
+        if n_samples < 70:
+            # Pour peu de données, on force un modèle linéaire (Ridge)
+            # car il extrapole mieux sur la colonne 'params'
+            best = next(r for r in arch_results if r['model'] == 'Ridge')
+        else:
+            # Pour beaucoup de données (ex: DiT), on garde le meilleur R2
             best = sorted(arch_results, key=lambda x: x['r2'], reverse=True)[0]
-            self.best_models[arch_name] = best
+        self.best_models[arch_name] = best
+        # Find best model
 
     def save_models(self):
         """Save best models"""
@@ -128,6 +134,15 @@ class VideoEnergyPredictor:
 
     def predict(self, arch, steps, res, frames, fps, duration, params, input_type="text"):
         """Make prediction with uncertainty"""
+
+        RES_FACTOR_HYBRID = 0.000045
+        RES_FACTOR_UNET = 0.000012
+
+        refs_res = {
+            "hybrid": 345600,
+            "unet": 589824,
+            "dit": res
+        }
         try:
             model = joblib.load(f"./ml/model/best_model_wh_{arch}.joblib")
             scaler = joblib.load(f"./ml/model/scaler_wh_{arch}.joblib")
@@ -136,11 +151,21 @@ class VideoEnergyPredictor:
             # Prepare features
             input_image = 1 if input_type.lower() == "image" else 0
             input_text = 1 if input_type.lower() == "text" else 0
+            res_arch = refs_res[arch]
 
-            X = np.array([[steps, res, frames, params, duration, fps, input_image, input_text]])
+            X = np.array([[steps, res_arch, frames, params, duration, fps, input_image, input_text]])
             X_scaled = scaler.transform(X)
             pred = model.predict(X_scaled)[0]
             pred = max(0, pred)  # No negative energy
+
+            if arch == "hybrid":
+                res = (res - res_arch) * RES_FACTOR_HYBRID
+                print("resolution energy to add = ", res)
+                pred += res
+            elif arch == "unet":
+                res = (res - res_arch) * RES_FACTOR_UNET * (params / 1.5)
+                print(res)
+                pred += res
 
             return {
                 "energy_wh": round(pred, 2),

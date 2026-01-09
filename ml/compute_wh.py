@@ -2,6 +2,7 @@ from ml.ml_wh import VideoEnergyPredictor
 from ml.ml_runtime import Videorun_timePredictor
 import pandas as pd
 import joblib
+import math
 import os
 
 
@@ -24,6 +25,12 @@ def emission_factor(country: str, wh: float, run_time: float) -> tuple:
     seconds_in_3_years = 60 * 60 * 24 * 365.25 * GPU_LIFETIME_YEARS
     carbon_embodied = ((run_time / seconds_in_3_years) / GPU_UTILIZATION * GPU_EMBODIED_CO2) * 1000  # gCO2e
     return carbon_embodied, carbon_electricity, water_used
+
+
+def prepare_frames(frames: int, arch: str):
+    if arch == "hybrid":
+        return math.ceil(frames / 49)
+    return frames
 
 
 def run_ml(steps: float, res: float, frames: float, fps: int, duration: int, params: float, arch: str,
@@ -69,6 +76,7 @@ def run_ml(steps: float, res: float, frames: float, fps: int, duration: int, par
         run_time_predictor.train_all_architectures()
         joblib.dump(run_time_predictor.best_models, run_time_best_models_path)
 
+    frames = prepare_frames(frames, arch)
     # Make predictions with uncertainties
     pred_wh = energy_predictor.predict(arch, steps, res, frames, fps, duration, params, input_type)
     pred_run_time = run_time_predictor.predict(arch, steps, res, frames, fps, duration, params, input_type)
