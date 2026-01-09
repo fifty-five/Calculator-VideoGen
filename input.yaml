@@ -1,9 +1,8 @@
 country: United States
 denoising_steps: 20
-duration: 8
-fps: 24
+duration: 5
+fps: 8
 input_type: image
 model: CogVideoX-2B
-resolution_height: 720
-resolution_witdh: 1280
-steps: 50
+resolution_height: 480
+resolution_witdh: 720

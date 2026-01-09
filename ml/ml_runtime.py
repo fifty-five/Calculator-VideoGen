@@ -62,14 +62,14 @@ class Videorun_timePredictor:
         df = pd.read_csv(self.data_file)
         df = self.prepare_features(df)
 
-        df_arch = df[df['architecture'] == arch_name]
+        df_arch = df[df['architecture'] == arch_name].copy()
         n_samples = len(df_arch)
 
         if n_samples < 5:
             self.results[arch_name] = {}
             return
         if arch_name == "hybrid":
-            df_arch["frames"] = np.ceil(df_arch['frames'] / 49)
+            df_arch.loc[:, "frames"] = np.ceil(df_arch['frames'] / 49)
 
         df_arch = df_arch.dropna().reset_index(drop=True)
         X = df_arch[self.feature_cols]
@@ -158,7 +158,8 @@ class Videorun_timePredictor:
             input_image = 1 if input_type.lower() == "image" else 0
             input_text = 1 if input_type.lower() == "text" else 0
 
-            X = np.array([[steps, res, frames, fps, duration, params, input_image, input_text]])
+            feature_names = ['steps', 'res', 'frames', 'fps', 'duration', 'params', 'input_image', 'input_text']
+            X = pd.DataFrame([[steps, res, frames, fps, duration, params, input_image, input_text]], columns=feature_names)
             X_scaled = scaler.transform(X)
             pred = model.predict(X_scaled)[0]
             pred = max(0, pred)  # No negative run_times
