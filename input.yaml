@@ -1,8 +1,8 @@
-country: United States
-denoising_steps: 20
+country: China
+denoising_steps: 40
 duration: 5
-fps: 8
+fps: 24
 input_type: image
-model: CogVideoX-2B
-resolution_height: 480
+model: CogVideoX-5B
+resolution_height: 1280
 resolution_witdh: 720

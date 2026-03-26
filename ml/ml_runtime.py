@@ -158,8 +158,8 @@ class Videorun_timePredictor:
             input_image = 1 if input_type.lower() == "image" else 0
             input_text = 1 if input_type.lower() == "text" else 0
 
-            feature_names = ['steps', 'res', 'frames', 'fps', 'duration', 'params', 'input_image', 'input_text']
-            X = pd.DataFrame([[steps, res, frames, fps, duration, params, input_image, input_text]], columns=feature_names)
+            feature_names = ['steps', 'res', 'frames', 'params', 'duration', 'fps', 'input_image', 'input_text']
+            X = pd.DataFrame([[steps, res, frames, params, duration, fps, input_image, input_text]], columns=feature_names)
             X_scaled = scaler.transform(X)
             pred = model.predict(X_scaled)[0]
             pred = max(0, pred)  # No negative run_times

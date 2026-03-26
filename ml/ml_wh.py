@@ -135,6 +135,7 @@ class VideoEnergyPredictor:
     def predict(self, arch, steps, res, frames, fps, duration, params, input_type="text"):
         """Make prediction with uncertainty"""
 
+        # This is the 
         RES_FACTOR_HYBRID = 0.000045
         RES_FACTOR_UNET = 0.000012
 
