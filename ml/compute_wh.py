@@ -1,34 +1,54 @@
 import math
-import os
+from pathlib import Path
 
 import joblib
 import pandas as pd
 
 from ml.ml_runtime import Videorun_timePredictor
 from ml.ml_wh import VideoEnergyPredictor
+from ml.paths import (
+    carbon_country_csv,
+    ensure_model_dir,
+    ml_model_dir,
+    prepared_data_path,
+)
+
+ENERGY_METADATA = "energy_best_models_metadata.joblib"
+RUNTIME_METADATA = "runtime_best_models_metadata.joblib"
+
+
+def _load_or_migrate_metadata(model_dir: Path, canonical: Path, legacy_glob: str):
+    if canonical.exists():
+        return joblib.load(canonical)
+    legacy_files = sorted(model_dir.glob(legacy_glob))
+    for leg in legacy_files:
+        data = joblib.load(leg)
+        joblib.dump(data, canonical)
+        return data
+    return None
 
 
 def emission_factor(country: str, wh: float, run_time: float) -> tuple:
-    emission_factor_csv = pd.read_csv("./ml/data/carbone_kwh_country.csv", header=0)
-    PUE = 1.56
-    WATER_USAGE = 0.35  # L/ kWh
+    emission_factor_csv = pd.read_csv(carbon_country_csv(), header=0)
+    pue = 1.56
+    water_usage = 0.35  # L/ kWh
 
-    wh_w_pue = wh * PUE
+    wh_w_pue = wh * pue
     try:
         country_factor = emission_factor_csv.loc[
             emission_factor_csv["country"] == country
         ]["Emission factor"].values[0]
     except (IndexError, KeyError):
         country_factor = 220.0  # Glbal avg server EF for electricity
-    GPU_EMBODIED_CO2 = 143.0  # avg kgCO2e to create a GPU
-    GPU_LIFETIME_YEARS = 3.0
-    GPU_UTILIZATION = 0.75
+    gpu_embodied_co2 = 143.0  # avg kgCO2e to create a GPU
+    gpu_lifetime_years = 3.0
+    gpu_utilization = 0.75
     carbon_electricity = country_factor * (wh_w_pue / 1000)  # gCO2
-    water_used = wh_w_pue / 1000 * WATER_USAGE  # l/kWh
+    water_used = wh_w_pue / 1000 * water_usage  # l/kWh
 
-    seconds_in_3_years = 60 * 60 * 24 * 365.25 * GPU_LIFETIME_YEARS
+    seconds_in_3_years = 60 * 60 * 24 * 365.25 * gpu_lifetime_years
     carbon_embodied = (
-        (run_time / seconds_in_3_years) / GPU_UTILIZATION * GPU_EMBODIED_CO2
+        (run_time / seconds_in_3_years) / gpu_utilization * gpu_embodied_co2
     ) * 1000  # gCO2e
     return carbon_embodied, carbon_electricity, water_used
 
@@ -66,35 +86,39 @@ def run_ml(
         dict with predictions and uncertainties
     """
 
-    # Safety check: avoid zero or invalid values
     if any(v <= 0 for v in (steps, res, frames, params, fps, duration)):
         return {
             "error": f"Invalid input: steps={steps}, res={res}, frames={frames}, params={params}. All must be > 0"
         }
 
-    # Check if models already exist
-    wh_best_models_path = f"./ml/model/best_models_wh_{arch}.joblib"
-    run_time_best_models_path = f"./ml/model/best_models_run_time_{arch}.joblib"
+    ensure_model_dir()
+    model_dir = ml_model_dir()
+    data_csv = str(prepared_data_path())
+    energy_path = model_dir / ENERGY_METADATA
+    runtime_path = model_dir / RUNTIME_METADATA
 
-    # Initialize predictors
-    energy_predictor = VideoEnergyPredictor(data_file="./ml/data/prepared_data.csv")
-    run_time_predictor = Videorun_timePredictor(data_file="./ml/data/prepared_data.csv")
+    energy_predictor = VideoEnergyPredictor(data_file=data_csv, model_dir=model_dir)
+    run_time_predictor = Videorun_timePredictor(data_file=data_csv, model_dir=model_dir)
 
-    # Load best_models if they exist, otherwise train
-    if os.path.exists(wh_best_models_path):
-        energy_predictor.best_models = joblib.load(wh_best_models_path)
+    e_meta = _load_or_migrate_metadata(
+        model_dir, energy_path, "best_models_wh_*.joblib"
+    )
+    if e_meta is not None:
+        energy_predictor.best_models = e_meta
     else:
         energy_predictor.train_all_architectures()
-        joblib.dump(energy_predictor.best_models, wh_best_models_path)
+        joblib.dump(energy_predictor.best_models, energy_path)
 
-    if os.path.exists(run_time_best_models_path):
-        run_time_predictor.best_models = joblib.load(run_time_best_models_path)
+    r_meta = _load_or_migrate_metadata(
+        model_dir, runtime_path, "best_models_run_time_*.joblib"
+    )
+    if r_meta is not None:
+        run_time_predictor.best_models = r_meta
     else:
         run_time_predictor.train_all_architectures()
-        joblib.dump(run_time_predictor.best_models, run_time_best_models_path)
+        joblib.dump(run_time_predictor.best_models, runtime_path)
 
     frames = prepare_frames(frames, arch)
-    # Make predictions with uncertainties
     pred_wh = energy_predictor.predict(
         arch, steps, res, frames, fps, duration, params, input_type
     )
@@ -107,7 +131,6 @@ def run_ml(
     if "error" in pred_run_time:
         return {"error": f"run_time prediction failed: {pred_run_time['error']}"}
 
-    # Calculate carbon emissions (with protection against negative values)
     total_carbon_embodied, total_carbon_electricity, total_water_used = emission_factor(
         country, pred_wh["energy_wh"], pred_run_time["run_time_s"]
     )
@@ -128,40 +151,40 @@ def run_ml(
         pred_run_time["run_time_s"] + pred_run_time["margin_95_s"],
     )
 
-    MIN_WH = 2.0  # Minimum energy value from dataset
-    MIN_run_time = 4.0  # Minimum run_time value from dataset
+    min_wh = 2.0  # Minimum energy value from dataset
+    min_run_time = 4.0  # Minimum run_time value from dataset
 
     return {
         "energy": {
-            "value_wh": max(MIN_WH, round(pred_wh["energy_wh"], 2)),
+            "value_wh": max(min_wh, round(pred_wh["energy_wh"], 2)),
             "uncertainty_wh": pred_wh["uncertainty_wh"],
             "margin_95_wh": pred_wh["margin_95_wh"],
             "best_case_wh": round(
-                max(MIN_WH, pred_wh["energy_wh"] - pred_wh["margin_95_wh"]), 2
+                max(min_wh, pred_wh["energy_wh"] - pred_wh["margin_95_wh"]), 2
             ),
             "worst_case_wh": round(
-                max(MIN_WH, pred_wh["energy_wh"] + pred_wh["margin_95_wh"]), 2
+                max(min_wh, pred_wh["energy_wh"] + pred_wh["margin_95_wh"]), 2
             ),
             "model": pred_wh["model"],
             "r2": pred_wh["r2_score"],
         },
         "run_time": {
-            "value_s": max(MIN_run_time, round(pred_run_time["run_time_s"], 2)),
+            "value_s": max(min_run_time, round(pred_run_time["run_time_s"], 2)),
             "value_min": max(
-                MIN_run_time / 60, round(pred_run_time["run_time_min"], 2)
+                min_run_time / 60, round(pred_run_time["run_time_min"], 2)
             ),
             "uncertainty_s": pred_run_time["uncertainty_s"],
             "margin_95_s": pred_run_time["margin_95_s"],
             "best_case_s": round(
                 max(
-                    MIN_run_time,
+                    min_run_time,
                     pred_run_time["run_time_s"] - pred_run_time["margin_95_s"],
                 ),
                 2,
             ),
             "worst_case_s": round(
                 max(
-                    MIN_run_time,
+                    min_run_time,
                     pred_run_time["run_time_s"] + pred_run_time["margin_95_s"],
                 ),
                 2,

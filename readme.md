@@ -257,7 +257,10 @@ MIN_run_time = 4.0   # Minimum runtime (seconds)
 Delete cached models to force retraining. The next CLI invocation will retrain (~35 seconds):
 
 ```bash
-rm ml/model/best_models_*.joblib
+rm -f ml/model/energy_best_models_metadata.joblib \
+      ml/model/runtime_best_models_metadata.joblib \
+      ml/model/best_models_wh_*.joblib \
+      ml/model/best_models_run_time_*.joblib
 python run.py --model CogVideoX-5B --duration 5 --fps 24 \
   --resolution-height 1280 --resolution-width 720 \
   --denoising-steps 40 --input-type image --country China
@@ -282,7 +285,7 @@ python run.py --model CogVideoX-5B --duration 5 --fps 24 \
                  ↓
         ┌────────────────────────────┐
         │   Check Model Cache        │
-        │  (best_models_*.joblib)    │
+        │(energy_* / runtime_* metadata)│
         └────┬───────────────┬───────┘
              │               │
        Cache │               │ No cache
@@ -473,10 +476,13 @@ Calculator-VideoGen/
 ├── tests/                             # Pytest: CLI and unit tests
 │   ├── conftest.py                    # Shared fixtures
 │   ├── test_cli.py                    # Black-box CLI tests
-│   └── test_compute_wh.py             # Unit tests (emission + frame rules)
+│   ├── test_compute_wh.py             # Unit tests (emission + frame rules)
+│   └── test_paths.py                  # Repo path resolution sanity checks
 │
 └── ml/                                # Machine learning modules
     ├── compute_wh.py                  # Prediction orchestration + carbon calc
+    ├── paths.py                       # Resolve ml/data and ml/model from repo root
+    ├── tabular_base.py                # Shared sklearn training loop for both predictors
     ├── ml_wh.py                       # Energy predictor (6 algorithms)
     ├── ml_runtime.py                  # Runtime predictor (6 algorithms)
     │
@@ -485,12 +491,8 @@ Calculator-VideoGen/
     │   └── carbone_kwh_country.csv    # Country emission factors (gCO2/kWh)
     │
     └── model/                         # Model cache (auto-generated)
-        ├── best_models_wh_dit.joblib
-        ├── best_models_wh_unet.joblib
-        ├── best_models_wh_hybrid.joblib
-        ├── best_models_run_time_dit.joblib
-        ├── best_models_run_time_unet.joblib
-        ├── best_models_run_time_hybrid.joblib
+        ├── energy_best_models_metadata.joblib  # In-memory best-model metadata (all arch; canonical)
+        ├── runtime_best_models_metadata.joblib # Same for runtime
         ├── best_model_wh_dit.joblib           # Selected energy model (DiT)
         ├── best_model_wh_unet.joblib          # Selected energy model (U-Net)
         ├── best_model_wh_hybrid.joblib        # Selected energy model (Hybrid)
@@ -515,14 +517,16 @@ Calculator-VideoGen/
 | [`utils.py`](utils.py) | Helper functions: YAML loading, validation, CSV export |
 | [`Dockerfile`](Dockerfile) | Runtime container image (python:3.11-slim) |
 | [`docker-compose.yml`](docker-compose.yml) | Compose service wrapping the CLI |
-| [`requirements.txt`](requirements.txt) | Runtime dependencies |
+| [`requirements.txt`](requirements.txt) | Runtime dependencies (version-pinned for sklearn/joblib cache compatibility) |
 | [`requirements-dev.txt`](requirements-dev.txt) | Format, lint, type-check, and test dependencies |
 | [`pyproject.toml`](pyproject.toml) | `isort` (black profile) and `mypy` defaults |
 | [`tests/test_cli.py`](tests/test_cli.py) | Black-box CLI tests |
 | [`tests/test_compute_wh.py`](tests/test_compute_wh.py) | Unit tests for `emission_factor` and `prepare_frames` |
 | [`ml/compute_wh.py`](ml/compute_wh.py) | Orchestrates energy + runtime prediction, calculates carbon |
-| [`ml/ml_wh.py`](ml/ml_wh.py) | VideoEnergyPredictor class (6-algorithm comparison) |
-| [`ml/ml_runtime.py`](ml/ml_runtime.py) | Videorun_timePredictor class (6-algorithm comparison) |
+| [`ml/paths.py`](ml/paths.py) | `project_root` / `ml` data and model `Path` helpers (CWD-independent) |
+| [`ml/tabular_base.py`](ml/tabular_base.py) | Shared base class for training loops |
+| [`ml/ml_wh.py`](ml/ml_wh.py) | `VideoEnergyPredictor` (6-algorithm comparison) |
+| [`ml/ml_runtime.py`](ml/ml_runtime.py) | `Videorun_timePredictor` (6-algorithm comparison) |
 | `ml/data/prepared_data.csv` | Training dataset (benchmark measurements) |
 | `ml/data/carbone_kwh_country.csv` | Country-specific carbon intensity factors |
 
@@ -532,15 +536,19 @@ Calculator-VideoGen/
 - Trains 6 algorithms per architecture (dit, unet, hybrid)
 - Tests each on energy and runtime prediction
 - Selects best model per architecture
-- Saves to `ml/model/best_models_*.joblib`
+- Writes per-arch `best_model_*.joblib` / `scaler_*.joblib` plus canonical `energy_best_models_metadata.joblib` and `runtime_best_models_metadata.joblib` (legacy `best_models_wh_*.joblib` / `best_models_run_time_*.joblib` are migrated on first load)
 
 **Subsequent Runs (~3 seconds):**
 - Loads cached models from disk
 - Skips training entirely
 
-**Force Retrain:**
+**Force Retrain:** Remove metadata bundles and, if present, any legacy per-arch metadata copies; per-arch model/scaler joblibs are re-created on train.
+
 ```bash
-rm ml/model/best_models_*.joblib
+rm -f ml/model/energy_best_models_metadata.joblib \
+      ml/model/runtime_best_models_metadata.joblib \
+      ml/model/best_models_wh_*.joblib \
+      ml/model/best_models_run_time_*.joblib
 python run.py --model CogVideoX-5B --duration 5 --fps 24 \
   --resolution-height 1280 --resolution-width 720 \
   --denoising-steps 40 --input-type image --country China

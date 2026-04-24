@@ -1,6 +1,7 @@
-pyyaml
-pandas
-numpy
-scikit-learn
-joblib
-polars
+# Pinned for reproducible installs and joblib/sklearn model compatibility; bump intentionally.
+pyyaml==6.0.3
+pandas==2.3.3
+numpy==2.4.4
+scikit-learn==1.8.0
+joblib==1.5.3
+polars==1.40.1
