@@ -22,8 +22,6 @@ def dump_csv_polars(data: pl.DataFrame, filename):
 
 
 def check_dict(cfg: dict, list_keys: list):
-    for key in list_keys:
-        try:
-            cfg[key]
-        except KeyError:
-            print("Missing", key, "in the input.yaml")
+    missing = [key for key in list_keys if key not in cfg]
+    if missing:
+        raise KeyError(f"Missing keys in config: {', '.join(missing)}")

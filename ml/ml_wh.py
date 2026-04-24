@@ -161,11 +161,9 @@ class VideoEnergyPredictor:
 
             if arch == "hybrid":
                 res = (res - res_arch) * RES_FACTOR_HYBRID
-                print("resolution energy to add = ", res)
                 pred += res
             elif arch == "unet":
                 res = (res - res_arch) * RES_FACTOR_UNET * (params / 1.5)
-                print(res)
                 pred += res
 
             return {
