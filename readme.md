@@ -4,7 +4,7 @@ A comprehensive tool to predict the **environmental footprint** of video generat
 
 ## Overview
 
-This calculator predicts the complete environmental impact of video generation using machine learning models trained on real benchmark data from 15+ state-of-the-art video generation models. The system provides:
+This calculator predicts the complete environmental impact of video generation using machine learning models trained on real benchmark data (see [`ml/data/prepared_data.csv`](ml/data/prepared_data.csv)). The CLI supports **15** named models in [`run.py`](run.py) `MODEL_CONFIGS`. The system provides:
 
 - **Energy consumption** (Wh) with 95% confidence intervals
 - **Runtime duration** (seconds) with uncertainty quantification
@@ -25,13 +25,13 @@ This calculator predicts the complete environmental impact of video generation u
 - **Water usage**: Data center cooling water (0.35 L/kWh)
 - **PUE factor**: 1.56 for realistic data center efficiency
 
-✅ **Intelligent Model Selection**
-- Large datasets (n≥100): Prioritizes tree-based models for better extrapolation
-- Small datasets (n<100): Selects most stable models (overfitting gap ≤ 0.08)
-- Automatic caching: First run trains models (~35s), subsequent runs load cache (~3s)
+✅ **Intelligent Model Selection** (independent for energy vs runtime)
+- **Runtime** (`Videorun_timePredictor`): For n≥100, prefers tree-based models (ExtraTrees, RandomForest, GradientBoosting). For n<100, prefers stable models (test vs CV R² gap ≤ 0.08), then lowest MAE.
+- **Energy** (`VideoEnergyPredictor`): For n<70, selects **Ridge**; otherwise picks the best test R² among candidates.
+- **Caching**: First run trains both stacks (~35s), subsequent runs load joblib from `ml/model/` (~3s when cache is warm)
 
 ✅ **Architecture Support**
-- **DiT** (Diffusion Transformer): Sora, Mochi, WAN2.1, Veo, Latte
+- **DiT** (Diffusion Transformer): e.g. Sora, Mochi, WAN2.1, VEO, Latte-XL
 - **U-Net**: AnimateDiff, Stable Video Diffusion, Pika, Lumiere
 - **Hybrid**: CogVideoX (5B, 2B)
 
@@ -41,13 +41,13 @@ This calculator predicts the complete environmental impact of video generation u
 - Single-line JSON output on stdout (pipeline-friendly)
 - Docker + docker-compose setup
 - Uncertainty quantification (95% CI)
-- Batch processing support (`all_models.py`)
+- You can script batch runs (loop over `MODEL_CONFIGS` in [`run.py`](run.py))
 
 ## Supported Models
 
 ### DiT Architecture (Diffusion Transformer)
 - **Sora** (10B params)
-- **Veo** (10B params)
+- **VEO** (10B params) — use this exact name with `--model` (case-sensitive; matches [`run.py`](run.py) `MODEL_CONFIGS`)
 - **Latte-XL** (0.67B params)
 - **WAN2.1-T2V-1.3B** (1.3B params)
 - **WAN2.1-T2V-14B** (14B params)
@@ -61,7 +61,6 @@ This calculator predicts the complete environmental impact of video generation u
 - **ModelScopeT2V** (1.7B params)
 - **Lumiere** (5B params)
 - **MagicVideo-V2** (1.5B params)
-- **Runway Gen-2** (1.5B params)
 
 ### Hybrid Architecture (Transformer + 3D VAE)
 - **CogVideoX-5B** (5B params)
@@ -70,7 +69,7 @@ This calculator predicts the complete environmental impact of video generation u
 ## Installation
 
 ### Prerequisites
-- Python 3.8+ and pip, **or** Docker
+- Python 3.10+ and pip (the codebase uses 3.10+ typing syntax, e.g. `dict | None`), **or** Docker
 
 ### Local setup
 
@@ -93,7 +92,7 @@ docker build -t calculator-videogen .
 docker compose build
 ```
 
-The image bundles trained model caches and training data, so containerized runs start cold in ~3 seconds.
+A `docker build` copies the build context (see [`Dockerfile`](Dockerfile) `COPY . .`), so any existing `ml/model/` cache and `ml/data/` on the machine you build on are included. A fresh clone without a local model cache will still **train on first run** in the container (~35s) before cached behavior applies.
 
 ## Quick Start
 
@@ -220,18 +219,9 @@ python run.py --model CogVideoX-5B ... | jq .
 }
 ```
 
-### 4. Batch Processing (All Models)
+#### Batch processing (all models)
 
-To compare all supported models at once:
-
-```bash
-python all_models.py
-```
-
-This will:
-- Run predictions for all 17 models
-- Save results to `result_all_models.csv`
-- Use fixed parameters: 720p, 8s duration, 24fps, 50 steps, image input
+There is no canonical `all_models.py` in this repository (it may be gitignored in some checkouts or maintained locally). To compare all supported models, write a small loop that invokes `run.py` once per model name in [`run.py`](run.py) `MODEL_CONFIGS` (15 models) and collect stdout JSON or CSV as needed.
 
 ## Advanced Usage
 
@@ -245,11 +235,11 @@ Edit [`run.py`](run.py), add to the `MODEL_CONFIGS` dict:
 
 ### Changing Default Safety Floors
 
-Edit [`ml/compute_wh.py`](ml/compute_wh.py#L103):
+Edit the safety floors in [`ml/compute_wh.py`](ml/compute_wh.py) (search for `min_wh` / `min_run_time`):
 
 ```python
-MIN_WH = 2.0         # Minimum energy (Wh)
-MIN_run_time = 4.0   # Minimum runtime (seconds)
+min_wh = 2.0         # Minimum energy (Wh)
+min_run_time = 4.0   # Minimum runtime (seconds)
 ```
 
 ### Re-training Models
@@ -341,7 +331,7 @@ python run.py --model CogVideoX-5B --duration 5 --fps 24 \
 
 **1. Data Preparation** ([`ml/data/prepared_data.csv`](ml/data/prepared_data.csv))
 
-The training dataset contains benchmark measurements from 15+ video generation models:
+The training dataset contains benchmark rows from multiple source runs and architectures (the CLI exposes **15** named model presets; see `MODEL_CONFIGS` in [`run.py`](run.py)):
 
 | Column | Description | Example |
 |--------|-------------|---------|
@@ -384,21 +374,30 @@ models = {
 - StandardScaler normalization on training set
 - 5-fold cross-validation for stability assessment
 
-**Model Selection Logic:**
+**Model selection (runtime, `Videorun_timePredictor`)**
 
-| Dataset Size | Selection Strategy |
+| Training samples (per architecture) | Selection strategy |
 |-------------|-------------------|
-| **n ≥ 100** | Prefer tree-based models (ExtraTrees, RandomForest, GradientBoosting)<br>Reason: Better extrapolation beyond training range |
-| **n < 100** | Priority: Stability (overfitting gap ≤ 0.08)<br>Secondary: Lowest MAE<br>Fallback: Lowest gap → lowest MAE |
+| **n ≥ 100** | Prefer tree-based models (ExtraTrees, RandomForest, GradientBoosting) for extrapolation; else best test R² |
+| **n < 100** | Prefer stability (R² test − R² CV ≤ 0.08), then lowest MAE; else minimize gap then MAE |
 
-*Overfitting gap = R² (test) - R² (cross-validation)*
+*Overfitting gap = R² (test) − mean CV R²* (see [`ml/ml_runtime.py`](ml/ml_runtime.py)).
+
+**Model selection (energy, `VideoEnergyPredictor`)**
+
+| Training samples (per architecture) | Selection strategy |
+|-------------|-------------------|
+| **n < 70** | **Ridge** (forced) |
+| **n ≥ 70** | Best test R² among the six candidates |
+
+(Implemented in [`ml/ml_wh.py`](ml/ml_wh.py) via the shared [`ml/tabular_base.py`](ml/tabular_base.py) base class.)
 
 **3. Prediction** ([`ml/compute_wh.py`](ml/compute_wh.py))
 
-**Input Validation:**
+**Input Validation** (all must be positive):
 ```python
-if steps <= 0 or res <= 0 or frames <= 0 or params <= 0:
-    return {"error": "Invalid input"}
+if any(v <= 0 for v in (steps, res, frames, params, fps, duration)):
+    return {"error": "Invalid input: ..."}
 ```
 
 **Prediction Pipeline:**
@@ -406,16 +405,16 @@ if steps <= 0 or res <= 0 or frames <= 0 or params <= 0:
 2. Convert to DataFrame with column names (avoids StandardScaler warnings)
 3. Load cached scaler and transform features
 4. Predict with best model for architecture
-5. Apply safety floors: `max(MIN_WH=2.0, prediction)`, `max(MIN_run_time=4.0, prediction)`
+5. Apply safety floors: `max(min_wh=2.0, prediction)` for Wh, `max(min_run_time=4.0, ...)` for seconds (see [`ml/compute_wh.py`](ml/compute_wh.py))
 6. Calculate uncertainty: `margin_95 = 1.96 × RMSE`
 
-**4. Carbon Emissions** ([`ml/compute_wh.py:emission_factor`](ml/compute_wh.py#L8))
+**4. Carbon Emissions** — `emission_factor` in [`ml/compute_wh.py`](ml/compute_wh.py)
 
 ```python
 # Constants
 PUE = 1.56                        # Power Usage Effectiveness
 WATER_USAGE = 0.35                # L/kWh
-GPU_EMBODIED_CO2 = 143.0          # kgCO2e (NVIDIA A100)
+GPU_EMBODIED_CO2 = 143.0          # kgCO2e (generic GPU figure in code; see Limitations)
 GPU_LIFETIME_YEARS = 3.0
 GPU_UTILIZATION = 0.75
 
@@ -461,7 +460,6 @@ worst_case = prediction + margin_95
 ```
 Calculator-VideoGen/
 ├── run.py                             # CLI entry point
-├── all_models.py                      # Batch processing script (all models)
 ├── utils.py                           # YAML loading helpers
 ├── input.yaml                         # Optional fallback config
 ├── requirements.txt                   # Runtime dependencies
@@ -470,7 +468,6 @@ Calculator-VideoGen/
 ├── docker-compose.yml                 # Compose service for convenient CLI runs
 ├── .pylintrc                          # Lint config
 ├── pyproject.toml                     # isort (black profile) + mypy defaults
-├── result_all_models.csv              # Batch results output
 ├── readme.md                          # This file
 │
 ├── tests/                             # Pytest: CLI and unit tests
@@ -512,7 +509,6 @@ Calculator-VideoGen/
 | File | Purpose |
 |------|---------|
 | [`run.py`](run.py) | Main script: loads config, runs prediction, displays results |
-| [`all_models.py`](all_models.py) | Batch processing: runs all models, exports CSV |
 | [`input.yaml`](input.yaml) | Optional fallback config (CLI flags override) |
 | [`utils.py`](utils.py) | Helper functions: YAML loading, validation, CSV export |
 | [`Dockerfile`](Dockerfile) | Runtime container image (python:3.11-slim) |
@@ -602,7 +598,7 @@ pytest -q
 
 **CLI tests** in [`tests/test_cli.py`](tests/test_cli.py) drive `run.py` as a subprocess. Covered scenarios: all flags happy path, YAML fallback, legacy `resolution_witdh` typo acceptance, missing-param errors, unknown model errors, and stdout-cleanliness (no stray prints or emoji). If the local model cache under `ml/model/` is absent, the first test run will train models (~35s); subsequent runs reuse the cache.
 
-**Unit tests** in [`tests/test_compute_wh.py`](tests/test_compute_wh.py) assert `emission_factor` and `prepare_frames` in `ml/compute_wh.py` with fixed inputs (no full ML run).
+**Unit tests:** [`tests/test_compute_wh.py`](tests/test_compute_wh.py) for `emission_factor` and `prepare_frames` (no full ML run); [`tests/test_paths.py`](tests/test_paths.py) checks [`ml/paths.py`](ml/paths.py) resolution against the repo layout.
 
 ## Performance Benchmarks
 
@@ -621,13 +617,13 @@ pytest -q
 | First run (with training) | ~35 seconds |
 | Subsequent runs (cached) | ~3 seconds |
 | Single prediction | <0.1 seconds |
-| Batch (17 models) | ~5 seconds |
+| Batch (15 models, warm cache) | A few seconds (inference only; no retrain) |
 
 ## Limitations & Assumptions
 
 ### Data Limitations
 - **Training data size**: Limited benchmark measurements (~20-150 samples per architecture)
-- **Model coverage**: 15+ models, may not generalize to completely new architectures
+- **Model coverage**: 15 names in `MODEL_CONFIGS`; behavior may not generalize to architectures or sizes outside the training data
 - **Parameter ranges**: Predictions most accurate within training distribution
   - Steps: 20-100
   - Resolution: 240p-1080p
@@ -658,10 +654,8 @@ error: unknown model 'Nonsense'
 → Check `--model` (or the `model` key in your YAML) matches a supported name exactly (case-sensitive).
 
 **2. Missing data files:**
-```
-FileNotFoundError: ml/data/prepared_data.csv
-```
-→ Ensure data files exist in `ml/data/` directory
+
+Errors when reading `prepared_data.csv` or `carbone_kwh_country.csv` mean the `ml/data/` files are missing or unreadable. Paths are resolved from the **repository root** (see [`ml/paths.py`](ml/paths.py)), not the shell’s current working directory, but the `ml/data/` tree must be present in the project.
 
 **3. Invalid parameters:**
 ```
@@ -669,21 +663,20 @@ FileNotFoundError: ml/data/prepared_data.csv
 ```
 → All numeric parameters must be > 0
 
-**4. Pandas SettingWithCopyWarning:**
+**4. Pandas `SettingWithCopyWarning`:**
 - **Fixed**: Code now uses `.copy()` and `.loc[]` for DataFrame operations
 
 **5. StandardScaler feature name warnings:**
 - **Fixed**: Predictions now use pandas DataFrame with proper column names
 
-### Debug Mode
+### Debug / training diagnostics
 
-Enable verbose output by checking model selection:
+Fitting each candidate regressor is wrapped in `try`/`except` in [`ml/tabular_base.py`](ml/tabular_base.py). Failed fits are logged at **DEBUG** (model name and exception). The stock [`run.py`](run.py) does not configure `logging`, so you will not see these lines until you set the log level, for example in a **local** scratch script or REPL *before* importing `ml` modules:
 
 ```python
-# In ml/ml_wh.py or ml/ml_runtime.py
-print(f"Architecture: {arch_name}")
-print(f"Best model: {best_name}")
-print(f"R²: {best_metrics['r2']:.3f}")
+import logging
+logging.basicConfig(level=logging.DEBUG)
+# then import and invoke training or run.py programmatically
 ```
 
 ## Summary
@@ -697,7 +690,7 @@ print(f"R²: {best_metrics['r2']:.3f}")
 | **Carbon** | Operational (electricity) + Embodied (GPU manufacturing) |
 | **Water** | Data center cooling water usage (0.35 L/kWh) |
 | **Safety** | Minimum floors: 2.0 Wh, 4.0 s (based on data minimum) |
-| **Scalability** | Supports 17+ video generation models across 3 architectures |
+| **Scalability** | 15 named models in `MODEL_CONFIGS` across 3 architectures (DiT, U-Net, hybrid) |
 
 ## Citation
 
@@ -722,7 +715,6 @@ If you use this tool in your research, please cite:
 
 ---
 
-**Last Updated:** January 2026  
-**Version:** 1.0
+**Last Updated:** April 2026
 
 
