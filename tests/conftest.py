@@ -5,13 +5,13 @@ from pathlib import Path
 
 import pytest
 
-
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
 @pytest.fixture
 def run_cli():
     """Invoke `python run.py ...` from the project root and return (returncode, stdout, stderr)."""
+
     def _run(*args, config=None):
         argv = [sys.executable, "run.py", *[str(a) for a in args]]
         if config is not None:
@@ -25,6 +25,7 @@ def run_cli():
             env={**os.environ, "PYTHONIOENCODING": "utf-8"},
         )
         return result.returncode, result.stdout, result.stderr
+
     return _run
 
 

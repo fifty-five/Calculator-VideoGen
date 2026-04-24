@@ -3,9 +3,8 @@ import json
 import os
 import sys
 
-from utils import load_yaml
 from ml.compute_wh import run_ml
-
+from utils import load_yaml
 
 MODEL_CONFIGS = {
     # --- UNet models ---
@@ -15,7 +14,6 @@ MODEL_CONFIGS = {
     "ModelScopeT2V": {"arch": "unet", "params": 1.7},
     "Lumiere": {"arch": "unet", "params": 5.0},
     "MagicVideo-V2": {"arch": "unet", "params": 1.5},
-
     # --- DiT models ---
     "Sora": {"arch": "dit", "params": 10.0},
     "WAN2.1-T2V-1.3B": {"arch": "dit", "params": 1.3},
@@ -24,7 +22,6 @@ MODEL_CONFIGS = {
     "ContentV": {"arch": "dit", "params": 8.0},
     "VEO": {"arch": "dit", "params": 10.0},
     "Latte-XL": {"arch": "dit", "params": 0.67},
-
     # --- Hybrid (Transformer + 3D VAE) ---
     "CogVideoX-5B": {"arch": "hybrid", "params": 5.0},
     "CogVideoX-2B": {"arch": "hybrid", "params": 2.0},
@@ -36,7 +33,7 @@ def get_model_archi(model: str) -> dict:
     return MODEL_CONFIGS.get(model, {"arch": "error", "params": 0})
 
 
-def _yaml_get(cfg: dict, key: str):
+def _yaml_get(cfg: dict | None, key: str):
     """Read a key from a loaded yaml, tolerating the legacy resolution_witdh typo."""
     if cfg is None:
         return None
@@ -49,12 +46,22 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Predict the environmental footprint of a video generation run.",
     )
-    parser.add_argument("--model", type=str, default=None, help="Model name (see supported models).")
-    parser.add_argument("--duration", type=int, default=None, help="Video duration in seconds.")
-    parser.add_argument("--resolution-height", type=int, default=None, help="Video height in pixels.")
-    parser.add_argument("--resolution-width", type=int, default=None, help="Video width in pixels.")
+    parser.add_argument(
+        "--model", type=str, default=None, help="Model name (see supported models)."
+    )
+    parser.add_argument(
+        "--duration", type=int, default=None, help="Video duration in seconds."
+    )
+    parser.add_argument(
+        "--resolution-height", type=int, default=None, help="Video height in pixels."
+    )
+    parser.add_argument(
+        "--resolution-width", type=int, default=None, help="Video width in pixels."
+    )
     parser.add_argument("--fps", type=int, default=None, help="Frames per second.")
-    parser.add_argument("--denoising-steps", type=int, default=None, help="Number of denoising steps.")
+    parser.add_argument(
+        "--denoising-steps", type=int, default=None, help="Number of denoising steps."
+    )
     parser.add_argument(
         "--input-type",
         type=str,
@@ -62,13 +69,15 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help='Input modality: "text" or "image".',
     )
-    parser.add_argument("--country", type=str, default=None, help="Country for carbon intensity lookup.")
+    parser.add_argument(
+        "--country", type=str, default=None, help="Country for carbon intensity lookup."
+    )
     parser.add_argument(
         "--config",
         type=str,
         default=None,
         help="Optional YAML config path. CLI flags override file values. "
-             "Defaults to input.yaml if it exists in the current directory.",
+        "Defaults to input.yaml if it exists in the current directory.",
     )
     return parser
 
@@ -150,7 +159,9 @@ def run(argv=None) -> int:
             "water_used": predictions["water_used"],
         },
     }
-    sys.stdout.write(json.dumps(output, separators=(",", ":"), default=_json_default) + "\n")
+    sys.stdout.write(
+        json.dumps(output, separators=(",", ":"), default=_json_default) + "\n"
+    )
     return 0
 
 

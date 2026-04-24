@@ -4,29 +4,33 @@ Tests multiple regression models for each architecture (dit, hybrid, unet)
 Models: LinearRegression, Ridge, SVR, ExtraTrees, RandomForest, GradientBoosting
 """
 
-import pandas as pd
-import numpy as np
 import joblib
-from sklearn.model_selection import train_test_split, cross_val_score
-from sklearn.preprocessing import StandardScaler
-from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor, ExtraTreesRegressor
-from sklearn.linear_model import Ridge, LinearRegression
-from sklearn.svm import SVR
+import numpy as np
+import pandas as pd
+from sklearn.ensemble import (
+    ExtraTreesRegressor,
+    GradientBoostingRegressor,
+    RandomForestRegressor,
+)
+from sklearn.linear_model import LinearRegression, Ridge
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+from sklearn.model_selection import cross_val_score, train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.svm import SVR
 
 
 class VideoEnergyPredictor:
     def __init__(self, data_file="prepared_data.csv"):
         self.data_file = data_file
-        self.base_features = ['steps', 'res', 'frames', 'params', 'duration', 'fps']
+        self.base_features = ["steps", "res", "frames", "params", "duration", "fps"]
         self.feature_cols = None
         self.results = {}
         self.best_models = {}
 
     def prepare_features(self, df):
         df_prep = df.copy()
-        if 'Input type' in df_prep.columns:
-            input_dummies = pd.get_dummies(df_prep['Input type'], prefix='input')
+        if "Input type" in df_prep.columns:
+            input_dummies = pd.get_dummies(df_prep["Input type"], prefix="input")
             df_prep = pd.concat([df_prep, input_dummies], axis=1)
             input_cols = sorted(list(input_dummies.columns))
             if self.feature_cols is None:
@@ -39,20 +43,29 @@ class VideoEnergyPredictor:
     def get_models(self):
         """Return dict of regression models to test"""
         return {
-            'LinearRegression': LinearRegression(),
-            'Ridge': Ridge(alpha=1.0),
-            'SVR_rbf': SVR(kernel='rbf', C=100, epsilon=0.1),
-            'ExtraTrees': ExtraTreesRegressor(
-                n_estimators=100, max_depth=10, min_samples_leaf=2,
-                random_state=42, n_jobs=-1
+            "LinearRegression": LinearRegression(),
+            "Ridge": Ridge(alpha=1.0),
+            "SVR_rbf": SVR(kernel="rbf", C=100, epsilon=0.1),
+            "ExtraTrees": ExtraTreesRegressor(
+                n_estimators=100,
+                max_depth=10,
+                min_samples_leaf=2,
+                random_state=42,
+                n_jobs=-1,
             ),
-            'RandomForest': RandomForestRegressor(
-                n_estimators=100, max_depth=10, min_samples_leaf=2,
-                random_state=42, n_jobs=-1
+            "RandomForest": RandomForestRegressor(
+                n_estimators=100,
+                max_depth=10,
+                min_samples_leaf=2,
+                random_state=42,
+                n_jobs=-1,
             ),
-            'GradientBoosting': GradientBoostingRegressor(
-                n_estimators=100, max_depth=5, learning_rate=0.1,
-                subsample=0.8, random_state=42
+            "GradientBoosting": GradientBoostingRegressor(
+                n_estimators=100,
+                max_depth=5,
+                learning_rate=0.1,
+                subsample=0.8,
+                random_state=42,
             ),
         }
 
@@ -61,16 +74,16 @@ class VideoEnergyPredictor:
         df = pd.read_csv(self.data_file)
         df = self.prepare_features(df)
 
-        df_arch = df[df['architecture'] == arch_name].copy()
+        df_arch = df[df["architecture"] == arch_name].copy()
         n_samples = len(df_arch)
         if n_samples < 5:
             self.results[arch_name] = {}
             return
         if arch_name == "hybrid":
-            df_arch["frames"] = np.ceil(df_arch['frames'] / 49)
+            df_arch["frames"] = np.ceil(df_arch["frames"] / 49)
 
         X = df_arch[self.feature_cols]
-        y = df_arch['Wh']
+        y = df_arch["Wh"]
 
         X_train, X_test, y_train, y_test = train_test_split(
             X, y, test_size=0.25, random_state=42
@@ -93,20 +106,23 @@ class VideoEnergyPredictor:
                 rmse = np.sqrt(mean_squared_error(y_test, y_pred))
                 r2 = r2_score(y_test, y_pred)
 
-                cv_scores = cross_val_score(model, X_train_scaled, y_train,
-                                            cv=5, scoring='r2')
+                cv_scores = cross_val_score(
+                    model, X_train_scaled, y_train, cv=5, scoring="r2"
+                )
 
-                arch_results.append({
-                    'model': model_name,
-                    'mae': mae,
-                    'rmse': rmse,
-                    'r2': r2,
-                    'cv_r2': cv_scores.mean(),
-                    'cv_r2_std': cv_scores.std(),
-                    'n_test': len(X_test),
-                    'model_obj': model,
-                    'scaler': scaler
-                })
+                arch_results.append(
+                    {
+                        "model": model_name,
+                        "mae": mae,
+                        "rmse": rmse,
+                        "r2": r2,
+                        "cv_r2": cv_scores.mean(),
+                        "cv_r2_std": cv_scores.std(),
+                        "n_test": len(X_test),
+                        "model_obj": model,
+                        "scaler": scaler,
+                    }
+                )
             except Exception:
                 pass
 
@@ -116,34 +132,31 @@ class VideoEnergyPredictor:
         if n_samples < 70:
             # Pour peu de données, on force un modèle linéaire (Ridge)
             # car il extrapole mieux sur la colonne 'params'
-            best = next(r for r in arch_results if r['model'] == 'Ridge')
+            best = next(r for r in arch_results if r["model"] == "Ridge")
         else:
             # Pour beaucoup de données (ex: DiT), on garde le meilleur R2
-            best = sorted(arch_results, key=lambda x: x['r2'], reverse=True)[0]
+            best = sorted(arch_results, key=lambda x: x["r2"], reverse=True)[0]
         self.best_models[arch_name] = best
         # Find best model
 
     def save_models(self):
         """Save best models"""
-        for arch in self.best_models:
-            best = self.best_models[arch]
+        for arch, best in self.best_models.items():
             model_path = f"./ml/model/best_model_wh_{arch}.joblib"
             scaler_path = f"./ml/model/scaler_wh_{arch}.joblib"
-            joblib.dump(best['model_obj'], model_path)
-            joblib.dump(best['scaler'], scaler_path)
+            joblib.dump(best["model_obj"], model_path)
+            joblib.dump(best["scaler"], scaler_path)
 
-    def predict(self, arch, steps, res, frames, fps, duration, params, input_type="text"):
+    def predict(
+        self, arch, steps, res, frames, fps, duration, params, input_type="text"
+    ):
         """Make prediction with uncertainty"""
 
-        # This is the 
+        # This is the
         RES_FACTOR_HYBRID = 0.000045
         RES_FACTOR_UNET = 0.000012
 
-        refs_res = {
-            "hybrid": 345600,
-            "unet": 589824,
-            "dit": res
-        }
+        refs_res = {"hybrid": 345600, "unet": 589824, "dit": res}
         try:
             model = joblib.load(f"./ml/model/best_model_wh_{arch}.joblib")
             scaler = joblib.load(f"./ml/model/scaler_wh_{arch}.joblib")
@@ -154,7 +167,20 @@ class VideoEnergyPredictor:
             input_text = 1 if input_type.lower() == "text" else 0
             res_arch = refs_res[arch]
 
-            X = np.array([[steps, res_arch, frames, params, duration, fps, input_image, input_text]])
+            X = np.array(
+                [
+                    [
+                        steps,
+                        res_arch,
+                        frames,
+                        params,
+                        duration,
+                        fps,
+                        input_image,
+                        input_text,
+                    ]
+                ]
+            )
             X_scaled = scaler.transform(X)
             pred = model.predict(X_scaled)[0]
             pred = max(0, pred)  # No negative energy
@@ -168,10 +194,10 @@ class VideoEnergyPredictor:
 
             return {
                 "energy_wh": round(pred, 2),
-                "uncertainty_wh": round(best['mae'], 2),
-                "margin_95_wh": round(1.96 * best['rmse'], 2),
-                "r2_score": round(best['r2'], 3),
-                "model": best['model']
+                "uncertainty_wh": round(best["mae"], 2),
+                "margin_95_wh": round(1.96 * best["rmse"], 2),
+                "r2_score": round(best["r2"], 3),
+                "model": best["model"],
             }
         except Exception as e:
             return {"error": str(e)}
@@ -181,7 +207,7 @@ class VideoEnergyPredictor:
         df = pd.read_csv(self.data_file)
         df = self.prepare_features(df)
 
-        for arch in sorted(df['architecture'].unique()):
+        for arch in sorted(df["architecture"].unique()):
             self.train_architecture(arch)
 
         self.save_models()

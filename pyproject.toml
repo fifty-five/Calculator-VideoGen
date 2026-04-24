@@ -1,0 +1,7 @@
+[tool.isort]
+profile = "black"
+
+[tool.mypy]
+python_version = "3.11"
+follow_imports = "silent"
+ignore_missing_imports = true
