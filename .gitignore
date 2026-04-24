@@ -3,3 +3,5 @@
 **/vscode/
 all_models.py
 result_all_models.csv
+.venv/
+.pytest_cache/

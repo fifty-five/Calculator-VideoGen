@@ -1,0 +1,9 @@
+services:
+  videogen:
+    build: .
+    image: calculator-videogen:latest
+    # Override the command at run time, for example:
+    #   docker compose run --rm videogen \
+    #     --model CogVideoX-5B --duration 5 --fps 24 \
+    #     --resolution-height 1280 --resolution-width 720 \
+    #     --denoising-steps 40 --input-type image --country China

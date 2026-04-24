@@ -5,4 +5,4 @@ fps: 24
 input_type: image
 model: CogVideoX-5B
 resolution_height: 1280
-resolution_witdh: 720
+resolution_width: 720

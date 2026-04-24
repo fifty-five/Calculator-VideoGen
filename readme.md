@@ -37,7 +37,9 @@ This calculator predicts the complete environmental impact of video generation u
 
 ✅ **Production-Ready**
 - Input validation with safety floors
-- YAML configuration
+- CLI (argparse) with optional YAML fallback
+- Single-line JSON output on stdout (pipeline-friendly)
+- Docker + docker-compose setup
 - Uncertainty quantification (95% CI)
 - Batch processing support (`all_models.py`)
 
@@ -68,122 +70,151 @@ This calculator predicts the complete environmental impact of video generation u
 ## Installation
 
 ### Prerequisites
-- Python 3.8+
-- pip
+- Python 3.8+ and pip, **or** Docker
 
-### Setup
+### Local setup
 
 ```bash
 # Clone or navigate to project directory
-cd final_prog
+cd Calculator-VideoGen
 
-# Install dependencies
-pip install pandas numpy scikit-learn pyyaml joblib polars
+# Install runtime dependencies
+pip install -r requirements.txt
 
-# Verify data files exist
-# - ml/data/prepared_data.csv
-# - ml/data/carbone_kwh_country.csv
+# (Optional) dev dependencies for linting + tests
+pip install -r requirements-dev.txt
 ```
+
+### Docker setup
+
+```bash
+docker build -t calculator-videogen .
+# or
+docker compose build
+```
+
+The image bundles trained model caches and training data, so containerized runs start cold in ~3 seconds.
 
 ## Quick Start
 
-### 1. Configure Input
+The tool is CLI-first and writes a single line of minified JSON to stdout. `input.yaml` is still supported as an **optional fallback** — CLI flags always win, and if no YAML is found the CLI alone must supply every parameter.
 
-Edit [`input.yaml`](input.yaml) with your video generation parameters:
-
-```yaml
-model: CogVideoX-5B              # Model name (see supported models)
-duration: 2                      # Video duration in seconds
-resolution_height: 480           # Height in pixels
-resolution_witdh: 720           # Width in pixels (note: typo preserved for compatibility)
-fps: 24                         # Frames per second
-denoising_steps: 50             # Number of denoising steps
-input_type: text                # "text" or "image" (default: text)
-country: France                 # Country for carbon intensity factor
-```
-
-**Parameter Guidelines:**
-- `duration`: 1-10 seconds (typical range)
-- `resolution_height` × `resolution_witdh`: 480×720 to 1080×1920
-- `fps`: 8, 16, 24, 30 (common values)
-- `denoising_steps`: 20-100 (50 is optimal for most models)
-- `input_type`: "text" (text-to-video) or "image" (image-to-video)
-- `total_frames`: Auto-calculated as `duration × fps`
-
-### 2. Run Single Prediction
+### Run locally
 
 ```bash
-python run.py
+python run.py \
+  --model CogVideoX-5B \
+  --duration 5 \
+  --fps 24 \
+  --resolution-height 1280 \
+  --resolution-width 720 \
+  --denoising-steps 40 \
+  --input-type image \
+  --country China
 ```
 
-### 3. Output
+### Run in Docker
 
-**Console Output:**
-```
-📥 INPUTS:
-  Model: CogVideoX-5B (hybrid, 5.0B params)
-  Steps: 50
-  Resolution: 480x720
-  Frames: 48
-
-📊 RESULTS:
-  Energy: 5.63 ± 1.57 Wh
-    Model: SVR_rbf (R²=0.988)
-    95% interval: 2.00 - 13.26 Wh
-
-  run_time: 147.32 ± 69.90 s (2.46 min)
-    Model: ExtraTrees (R²=0.937)
-    95% interval: 4.00 - 339.77 s
-
-  Carbon emissions: 0.48 gCO2e
-    Embodied: 0.03 gCO2e
-    Electricity: 0.45 gCO2e
-    95% interval: 0.04 - 1.01 gCO2e
-
-  Water used: 0.003 L
-    95% interval: 0.002 - 0.007 L
+```bash
+docker run --rm calculator-videogen \
+  --model CogVideoX-5B --duration 5 --fps 24 \
+  --resolution-height 1280 --resolution-width 720 \
+  --denoising-steps 40 --input-type image --country China
 ```
 
-**Return Value (Python dict):**
-```python
+Or with compose:
+
+```bash
+docker compose run --rm videogen \
+  --model CogVideoX-5B --duration 5 --fps 24 \
+  --resolution-height 1280 --resolution-width 720 \
+  --denoising-steps 40 --input-type image --country China
+```
+
+### CLI flags
+
+| Flag | Type | Description |
+|------|------|-------------|
+| `--model` | str | Model name (see supported models) |
+| `--duration` | int | Video duration in seconds |
+| `--resolution-height` | int | Height in pixels |
+| `--resolution-width` | int | Width in pixels |
+| `--fps` | int | Frames per second |
+| `--denoising-steps` | int | Number of denoising steps |
+| `--input-type` | str | `text` or `image` |
+| `--country` | str | Country for carbon intensity factor |
+| `--config` | path | Optional YAML file. Defaults to `input.yaml` in cwd if present. |
+
+**Parameter guidelines:**
+- `--duration`: 1-10 seconds (typical range)
+- `--resolution-height` × `--resolution-width`: 480×720 to 1080×1920
+- `--fps`: 8, 16, 24, 30 (common values)
+- `--denoising-steps`: 20-100 (50 is optimal for most models)
+- `--input-type`: `text` (text-to-video) or `image` (image-to-video)
+- `total_frames` is auto-calculated as `duration × fps`
+
+### YAML fallback
+
+`input.yaml` (or any file passed via `--config`) can supply defaults for missing CLI flags. The legacy `resolution_witdh` key is still accepted for backward compatibility.
+
+```yaml
+model: CogVideoX-5B
+duration: 2
+resolution_height: 480
+resolution_width: 720
+fps: 24
+denoising_steps: 50
+input_type: text
+country: France
+```
+
+### Output
+
+stdout contains a single line of minified JSON (exit 0). Errors go to stderr with a non-zero exit code. Piping into `jq` is the easy way to pretty-print:
+
+```bash
+python run.py --model CogVideoX-5B ... | jq .
+```
+
+```json
 {
-  'inputs': {
-    'model': 'CogVideoX-5B',
-    'steps': 50,
-    'resolution': '480x720',
-    'frames': 48
+  "inputs": {
+    "model": "CogVideoX-5B",
+    "steps": 50,
+    "resolution": "480x720",
+    "frames": 48
   },
-  'predictions': {
-    'energy': {
-      'value_wh': 5.63,              # Predicted energy consumption
-      'uncertainty_wh': 1.57,         # Mean absolute error
-      'margin_95_wh': 3.08,          # 95% CI margin (1.96×RMSE)
-      'best_case_wh': 2.56,          # Lower bound (max(MIN, pred-margin))
-      'worst_case_wh': 8.71,         # Upper bound
-      'model': 'SVR_rbf',            # Selected algorithm
-      'r2': 0.988                    # R² score
+  "predictions": {
+    "energy": {
+      "value_wh": 5.63,
+      "uncertainty_wh": 1.57,
+      "margin_95_wh": 3.08,
+      "best_case_wh": 2.56,
+      "worst_case_wh": 8.71,
+      "model": "SVR_rbf",
+      "r2": 0.988
     },
-    'run_time': {
-      'value_s': 147.32,             # Predicted runtime (seconds)
-      'value_min': 2.46,             # Runtime in minutes
-      'uncertainty_s': 69.90,        # Mean absolute error
-      'margin_95_s': 137.01,         # 95% CI margin
-      'best_case_s': 10.31,          # Lower bound
-      'worst_case_s': 284.33,        # Upper bound
-      'model': 'ExtraTrees',
-      'r2': 0.937
+    "run_time": {
+      "value_s": 147.32,
+      "value_min": 2.46,
+      "uncertainty_s": 69.90,
+      "margin_95_s": 137.01,
+      "best_case_s": 10.31,
+      "worst_case_s": 284.33,
+      "model": "ExtraTrees",
+      "r2": 0.937
     },
-    'carbon': {
-      'value_gco2e': 0.48,           # Total carbon (operational + embodied)
-      'g_co2_embodied': 0.03,        # GPU manufacturing carbon
-      'g_co2_electricity': 0.45,     # Electricity carbon
-      'best_case_gco2e': 0.18,       # Best case scenario
-      'worst_case_gco2e': 0.78       # Worst case scenario
+    "carbon": {
+      "value_gco2e": 0.48,
+      "g_co2_embodied": 0.03,
+      "g_co2_electricity": 0.45,
+      "best_case_gco2e": 0.18,
+      "worst_case_gco2e": 0.78
     },
-    'water_used': {
-      'value_water_used': 0.003,     # Water consumption (L)
-      'best_case_water_used': 0.001,
-      'worst_case_water_used': 0.005
+    "water_used": {
+      "value_water_used": 0.003,
+      "best_case_water_used": 0.001,
+      "worst_case_water_used": 0.005
     }
   }
 }
@@ -206,7 +237,7 @@ This will:
 
 ### Adding New Models
 
-Edit [`run.py`](run.py), add to `model_configs` dict:
+Edit [`run.py`](run.py), add to the `MODEL_CONFIGS` dict:
 
 ```python
 "YourModel": {"arch": "dit", "params": 15.0}  # arch: dit, unet, or hybrid
@@ -223,11 +254,13 @@ MIN_run_time = 4.0   # Minimum runtime (seconds)
 
 ### Re-training Models
 
-Delete cached models to force retraining:
+Delete cached models to force retraining. The next CLI invocation will retrain (~35 seconds):
 
 ```bash
 rm ml/model/best_models_*.joblib
-python run.py  # Will retrain (~35 seconds)
+python run.py --model CogVideoX-5B --duration 5 --fps 24 \
+  --resolution-height 1280 --resolution-width 720 \
+  --denoising-steps 40 --input-type image --country China
 ```
 
 ## Technical Details
@@ -423,13 +456,22 @@ worst_case = prediction + margin_95
 ## Project Structure
 
 ```
-final_prog/
-├── run.py                             # Main entry point
+Calculator-VideoGen/
+├── run.py                             # CLI entry point
 ├── all_models.py                      # Batch processing script (all models)
-├── input.yaml                         # User configuration
-├── utils.py                           # YAML/CSV utilities, validation
-├── result_all_models.csv             # Batch results output
+├── utils.py                           # YAML loading helpers
+├── input.yaml                         # Optional fallback config
+├── requirements.txt                   # Runtime dependencies
+├── requirements-dev.txt               # Lint + test dependencies
+├── Dockerfile                         # Runtime container image
+├── docker-compose.yml                 # Compose service for convenient CLI runs
+├── .pylintrc                          # Lint config
+├── result_all_models.csv              # Batch results output
 ├── readme.md                          # This file
+│
+├── tests/                             # Pytest CLI tests
+│   ├── conftest.py                    # Shared fixtures
+│   └── test_cli.py                    # Black-box CLI tests
 │
 └── ml/                                # Machine learning modules
     ├── compute_wh.py                  # Prediction orchestration + carbon calc
@@ -467,8 +509,13 @@ final_prog/
 |------|---------|
 | [`run.py`](run.py) | Main script: loads config, runs prediction, displays results |
 | [`all_models.py`](all_models.py) | Batch processing: runs all models, exports CSV |
-| [`input.yaml`](input.yaml) | User configuration: model, resolution, duration, etc. |
+| [`input.yaml`](input.yaml) | Optional fallback config (CLI flags override) |
 | [`utils.py`](utils.py) | Helper functions: YAML loading, validation, CSV export |
+| [`Dockerfile`](Dockerfile) | Runtime container image (python:3.11-slim) |
+| [`docker-compose.yml`](docker-compose.yml) | Compose service wrapping the CLI |
+| [`requirements.txt`](requirements.txt) | Runtime dependencies |
+| [`requirements-dev.txt`](requirements-dev.txt) | Lint + test dependencies |
+| [`tests/test_cli.py`](tests/test_cli.py) | Black-box CLI tests |
 | [`ml/compute_wh.py`](ml/compute_wh.py) | Orchestrates energy + runtime prediction, calculates carbon |
 | [`ml/ml_wh.py`](ml/ml_wh.py) | VideoEnergyPredictor class (6-algorithm comparison) |
 | [`ml/ml_runtime.py`](ml/ml_runtime.py) | Videorun_timePredictor class (6-algorithm comparison) |
@@ -490,8 +537,32 @@ final_prog/
 **Force Retrain:**
 ```bash
 rm ml/model/best_models_*.joblib
-python run.py
+python run.py --model CogVideoX-5B --duration 5 --fps 24 \
+  --resolution-height 1280 --resolution-width 720 \
+  --denoising-steps 40 --input-type image --country China
 ```
+
+## Development
+
+### Install dev dependencies
+
+```bash
+pip install -r requirements-dev.txt
+```
+
+### Lint
+
+```bash
+pylint run.py utils.py ml/*.py tests/*.py
+```
+
+### Run tests
+
+```bash
+pytest -q
+```
+
+The test suite lives in [`tests/`](tests/) and drives `run.py` as a subprocess — it treats the CLI as a black box. Covered scenarios: all flags happy path, YAML fallback, legacy `resolution_witdh` typo acceptance, missing-param errors, unknown model errors, and stdout-cleanliness (no stray prints or emoji). If the local model cache under `ml/model/` is absent, the first test will train models (~35s); subsequent runs reuse the cache.
 
 ## Performance Benchmarks
 
@@ -542,9 +613,9 @@ python run.py
 
 **1. Model not found:**
 ```
-ValueError: Error, model can't be handled or is badly written
+error: unknown model 'Nonsense'
 ```
-→ Check model name in `input.yaml` matches exactly (case-sensitive)
+→ Check `--model` (or the `model` key in your YAML) matches a supported name exactly (case-sensitive).
 
 **2. Missing data files:**
 ```
