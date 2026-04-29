@@ -462,16 +462,18 @@ Calculator-VideoGen/
 ├── utils.py                           # YAML loading helpers
 ├── input.yaml                         # Optional fallback config
 ├── requirements.txt                   # Runtime dependencies
-├── requirements-dev.txt               # Lint + test dependencies
+├── requirements-dev.txt               # Format, lint, type-check + test dependencies
 ├── Dockerfile                         # Runtime container image
 ├── docker-compose.yml                 # Compose service for convenient CLI runs
 ├── .pylintrc                          # Lint config
+├── pyproject.toml                     # isort (black profile) + mypy defaults
 ├── result_all_models.csv              # Batch results output
 ├── readme.md                          # This file
 │
-├── tests/                             # Pytest CLI tests
+├── tests/                             # Pytest: CLI and unit tests
 │   ├── conftest.py                    # Shared fixtures
-│   └── test_cli.py                    # Black-box CLI tests
+│   ├── test_cli.py                    # Black-box CLI tests
+│   └── test_compute_wh.py             # Unit tests (emission + frame rules)
 │
 └── ml/                                # Machine learning modules
     ├── compute_wh.py                  # Prediction orchestration + carbon calc
@@ -514,8 +516,10 @@ Calculator-VideoGen/
 | [`Dockerfile`](Dockerfile) | Runtime container image (python:3.11-slim) |
 | [`docker-compose.yml`](docker-compose.yml) | Compose service wrapping the CLI |
 | [`requirements.txt`](requirements.txt) | Runtime dependencies |
-| [`requirements-dev.txt`](requirements-dev.txt) | Lint + test dependencies |
+| [`requirements-dev.txt`](requirements-dev.txt) | Format, lint, type-check, and test dependencies |
+| [`pyproject.toml`](pyproject.toml) | `isort` (black profile) and `mypy` defaults |
 | [`tests/test_cli.py`](tests/test_cli.py) | Black-box CLI tests |
+| [`tests/test_compute_wh.py`](tests/test_compute_wh.py) | Unit tests for `emission_factor` and `prepare_frames` |
 | [`ml/compute_wh.py`](ml/compute_wh.py) | Orchestrates energy + runtime prediction, calculates carbon |
 | [`ml/ml_wh.py`](ml/ml_wh.py) | VideoEnergyPredictor class (6-algorithm comparison) |
 | [`ml/ml_runtime.py`](ml/ml_runtime.py) | Videorun_timePredictor class (6-algorithm comparison) |
@@ -550,11 +554,37 @@ python run.py --model CogVideoX-5B --duration 5 --fps 24 \
 pip install -r requirements-dev.txt
 ```
 
+`requirements-dev.txt` pulls in the runtime stack from `requirements.txt` and adds **pytest** (tests), **pylint** (lint), **black** and **isort** (formatting), **mypy** (static typing), **types-PyYAML** and **pandas-stubs** (stubs for cleaner mypy on YAML/CSV helpers and tests), and [`pyproject.toml`](pyproject.toml) configures **isort** with the **black** profile (so import order matches the formatter) and **mypy** defaults (`follow_imports = silent`, `ignore_missing_imports` for third-party wheels without full stubs).
+
+### Format (Black + isort)
+
+Check formatting and import order without writing files:
+
+```bash
+black --check run.py utils.py tests/ ml/
+isort --check run.py utils.py tests/ ml/
+```
+
+Apply fixes (writes files in place):
+
+```bash
+black run.py utils.py tests/ ml/
+isort run.py utils.py tests/ ml/
+```
+
 ### Lint
 
 ```bash
 pylint run.py utils.py ml/*.py tests/*.py
 ```
+
+### Type check (mypy)
+
+```bash
+mypy run.py utils.py tests/
+```
+
+`ml/` is omitted from the default invocation so mypy does not treat the same file as both `ml.*` and a top-level module. Third-party libraries (e.g. sklearn) rely on `ignore_missing_imports` in [`pyproject.toml`](pyproject.toml) until you add explicit stubs or tighten the config.
 
 ### Run tests
 
@@ -562,7 +592,9 @@ pylint run.py utils.py ml/*.py tests/*.py
 pytest -q
 ```
 
-The test suite lives in [`tests/`](tests/) and drives `run.py` as a subprocess — it treats the CLI as a black box. Covered scenarios: all flags happy path, YAML fallback, legacy `resolution_witdh` typo acceptance, missing-param errors, unknown model errors, and stdout-cleanliness (no stray prints or emoji). If the local model cache under `ml/model/` is absent, the first test will train models (~35s); subsequent runs reuse the cache.
+**CLI tests** in [`tests/test_cli.py`](tests/test_cli.py) drive `run.py` as a subprocess. Covered scenarios: all flags happy path, YAML fallback, legacy `resolution_witdh` typo acceptance, missing-param errors, unknown model errors, and stdout-cleanliness (no stray prints or emoji). If the local model cache under `ml/model/` is absent, the first test run will train models (~35s); subsequent runs reuse the cache.
+
+**Unit tests** in [`tests/test_compute_wh.py`](tests/test_compute_wh.py) assert `emission_factor` and `prepare_frames` in `ml/compute_wh.py` with fixed inputs (no full ML run).
 
 ## Performance Benchmarks
 

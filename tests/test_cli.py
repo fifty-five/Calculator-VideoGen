@@ -1,15 +1,22 @@
 import json
 
-
 ALL_FLAGS = [
-    "--model", "CogVideoX-5B",
-    "--duration", "5",
-    "--fps", "24",
-    "--resolution-height", "1280",
-    "--resolution-width", "720",
-    "--denoising-steps", "40",
-    "--input-type", "image",
-    "--country", "China",
+    "--model",
+    "CogVideoX-5B",
+    "--duration",
+    "5",
+    "--fps",
+    "24",
+    "--resolution-height",
+    "1280",
+    "--resolution-width",
+    "720",
+    "--denoising-steps",
+    "40",
+    "--input-type",
+    "image",
+    "--country",
+    "China",
 ]
 
 
@@ -22,7 +29,12 @@ def test_all_flags_emits_single_line_json(run_cli, empty_yaml):
     assert payload["inputs"]["model"] == "CogVideoX-5B"
     assert payload["inputs"]["resolution"] == "1280x720"
     assert payload["inputs"]["frames"] == 5 * 24
-    assert set(payload["predictions"].keys()) == {"energy", "run_time", "carbon", "water_used"}
+    assert set(payload["predictions"].keys()) == {
+        "energy",
+        "run_time",
+        "carbon",
+        "water_used",
+    }
 
 
 def test_yaml_fallback_fills_missing_flags(run_cli, tmp_path):

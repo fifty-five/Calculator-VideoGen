@@ -1,3 +1,8 @@
 -r requirements.txt
 pylint
 pytest
+black
+isort
+mypy
+types-PyYAML
+pandas-stubs
