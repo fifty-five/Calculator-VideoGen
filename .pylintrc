@@ -1,0 +1,16 @@
+[MASTER]
+ignore=ml/model,ml/data
+
+[FORMAT]
+max-line-length=120
+
+[MESSAGES CONTROL]
+disable=missing-module-docstring,
+        missing-function-docstring,
+        missing-class-docstring,
+        too-many-arguments,
+        too-many-positional-arguments,
+        too-many-locals,
+        invalid-name,
+        broad-exception-caught,
+        duplicate-code

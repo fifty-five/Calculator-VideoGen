@@ -1,0 +1,11 @@
+.venv/
+.pytest_cache/
+__pycache__/
+**/__pycache__/
+.git/
+.claude/
+tests/
+*.md
+readme.md
+.pylintrc
+requirements-dev.txt
