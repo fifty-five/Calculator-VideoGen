@@ -30,10 +30,8 @@ def _load_or_migrate_metadata(model_dir: Path, canonical: Path, legacy_glob: str
 
 def emission_factor(country: str, wh: float, run_time: float) -> tuple:
     emission_factor_csv = pd.read_csv(carbon_country_csv(), header=0)
-    pue = 1.56
     water_usage = 0.35  # L/ kWh
 
-    wh_w_pue = wh * pue
     try:
         country_factor = emission_factor_csv.loc[
             emission_factor_csv["country"] == country
@@ -43,8 +41,8 @@ def emission_factor(country: str, wh: float, run_time: float) -> tuple:
     gpu_embodied_co2 = 143.0  # avg kgCO2e to create a GPU
     gpu_lifetime_years = 3.0
     gpu_utilization = 0.75
-    carbon_electricity = country_factor * (wh_w_pue / 1000)  # gCO2
-    water_used = wh_w_pue / 1000 * water_usage  # l/kWh
+    carbon_electricity = country_factor * (wh / 1000)  # gCO2
+    water_used = wh / 1000 * water_usage  # l/kWh
 
     seconds_in_3_years = 60 * 60 * 24 * 365.25 * gpu_lifetime_years
     carbon_embodied = (
