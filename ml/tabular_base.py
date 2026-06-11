@@ -163,7 +163,6 @@ class BaseTabularPredictor(ABC):
         """
         df = pd.read_csv(self.data_file)
         df = self.prepare_features(df)
-        print(df)
         assert self.feature_cols is not None
         df_arch = df[df["architecture"] == arch_name].copy()
         n_samples = len(df_arch)
