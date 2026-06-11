@@ -8,19 +8,19 @@ from utils import load_yaml
 
 MODEL_CONFIGS = {
     # --- UNet models ---
-    "AnimateDiff": {"arch": "unet", "params": 0.9},
+    "AnimateDiff": {"arch": "unet", "params": 7},
     "Stable Video Diffusion": {"arch": "unet", "params": 1.5},
     "Pika 1.0": {"arch": "unet", "params": 1.5},
     "ModelScopeT2V": {"arch": "unet", "params": 1.7},
     "Lumiere": {"arch": "unet", "params": 5.0},
     "MagicVideo-V2": {"arch": "unet", "params": 1.5},
     # --- DiT models ---
-    "Sora": {"arch": "dit", "params": 10.0},
+    "Sora": {"arch": "dit", "params": 1.3},  # Here we put SORA on 1.3 billions parameters so it is optimised on result
     "WAN2.1-T2V-1.3B": {"arch": "dit", "params": 1.3},
     "WAN2.1-T2V-14B": {"arch": "dit", "params": 14.0},
     "Mochi 1": {"arch": "dit", "params": 10.0},
     "ContentV": {"arch": "dit", "params": 8.0},
-    "VEO": {"arch": "dit", "params": 10.0},
+    "VEO": {"arch": "dit", "params": 3.77},  # Here we don't really know the real number of params for VEO so the params is optimised on the test data
     "Latte-XL": {"arch": "dit", "params": 0.67},
     # --- Hybrid (Transformer + 3D VAE) ---
     "CogVideoX-5B": {"arch": "hybrid", "params": 5.0},

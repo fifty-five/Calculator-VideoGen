@@ -1,4 +1,13 @@
-"""Shared tabular training scaffold for energy and run-time predictors."""
+"""Shared tabular training scaffold for energy and run-time predictors.
+
+This module centralizes the common training flow used by the per-architecture
+predictors:
+- load and prepare the dataset
+- align feature columns across input types
+- train several regression models
+- select the best model per architecture
+- persist the fitted model and scaler
+"""
 
 from __future__ import annotations
 
@@ -24,6 +33,10 @@ LOG = logging.getLogger(__name__)
 
 
 def _regression_model_catalog() -> dict:
+    """Return the small regression model zoo used for model selection.
+
+    The catalog is intentionally fixed so training is reproducible across runs.
+    """
     return {
         "LinearRegression": LinearRegression(),
         "Ridge": Ridge(alpha=1.0),
@@ -55,6 +68,11 @@ def _regression_model_catalog() -> dict:
 def _fit_and_score(
     model_name: str, model, scaler: StandardScaler, x_train, y_train, y_test, x_test
 ) -> dict | None:
+    """Fit one model and collect the evaluation metrics used for ranking.
+
+    The scaler is passed in so the resulting record can be saved alongside the
+    fitted estimator and reused later during prediction.
+    """
     try:
         model.fit(x_train, y_train)
         y_pred = model.predict(x_test)
@@ -80,6 +98,13 @@ def _fit_and_score(
 
 
 class BaseTabularPredictor(ABC):
+    """Base class for architecture-specific tabular predictors.
+
+    Subclasses only need to define the target column, the per-architecture data
+    shaping rule, the selection policy, and the filename prefixes used when
+    saving artifacts.
+    """
+
     def __init__(self, data_file: str, model_dir: Path) -> None:
         self.data_file = data_file
         self.model_dir = model_dir
@@ -89,6 +114,12 @@ class BaseTabularPredictor(ABC):
         self.best_models: dict = {}
 
     def prepare_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Expand categorical input type features and cache the final schema.
+
+        The first dataset seen during training defines the feature order. Later
+        datasets are padded with missing dummy columns so train and predict stay
+        aligned.
+        """
         df_prep = df.copy()
         if "Input type" in df_prep.columns:
             input_dummies = pd.get_dummies(df_prep["Input type"], prefix="input")
@@ -96,12 +127,15 @@ class BaseTabularPredictor(ABC):
             input_cols = sorted(input_dummies.columns)
             if self.feature_cols is None:
                 self.feature_cols = self.base_features + list(input_cols)
+            # Keep the full feature schema stable even when a dummy column is
+            # absent in a given architecture subset.
             for col in input_cols:
                 if col not in df_prep.columns:
                     df_prep[col] = 0
         return df_prep
 
     def get_models(self) -> dict:
+        """Return the estimator collection used for every architecture."""
         return _regression_model_catalog()
 
     @property
@@ -122,8 +156,14 @@ class BaseTabularPredictor(ABC):
     def _model_and_scaler_prefixes(self) -> tuple[str, str]: ...
 
     def train_architecture(self, arch_name: str) -> None:
+        """Train and rank all candidate models for one architecture.
+
+        This method isolates the architecture subset, optionally reshapes it,
+        splits it once for a comparable evaluation, and stores the best result.
+        """
         df = pd.read_csv(self.data_file)
         df = self.prepare_features(df)
+        print(df)
         assert self.feature_cols is not None
         df_arch = df[df["architecture"] == arch_name].copy()
         n_samples = len(df_arch)
@@ -152,6 +192,7 @@ class BaseTabularPredictor(ABC):
             self.best_models[arch_name] = best
 
     def save_models(self) -> None:
+        """Persist the best fitted estimator and scaler for each architecture."""
         best_pfx, scaler_pfx = self._model_and_scaler_prefixes()
         for arch, best in self.best_models.items():
             mpath = self.model_dir / f"{best_pfx}_{arch}.joblib"
@@ -160,6 +201,7 @@ class BaseTabularPredictor(ABC):
             joblib.dump(best["scaler"], spath)
 
     def train_all_architectures(self) -> None:
+        """Train every architecture present in the dataset."""
         df = pd.read_csv(self.data_file)
         df = self.prepare_features(df)
         for arch in sorted(df["architecture"].unique()):

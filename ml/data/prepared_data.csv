@@ -430,3 +430,4 @@ steps,res,frames,Wh,Input type,architecture,params,fps,duration,run_time
 20.0,345600.0,32.0,18.0,text,hybrid,5.0,8,4.0,331.0
 20.0,345600.0,40.0,23.0,text,hybrid,5.0,8,5.0,405.0
 20.0,345600.0,48.0,29.0,text,hybrid,5.0,8,6.0,481.0
+50.0,589824.0,12.0,15.0,text,hybrid,5.0,6,2.0,452.0

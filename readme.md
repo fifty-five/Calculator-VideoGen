@@ -425,7 +425,7 @@ operational_co2 = country_factor * (wh_with_pue / 1000)  # gCO2
 seconds_in_lifetime = 60 * 60 * 24 * 365.25 * 3
 embodied_co2 = (runtime_s / seconds_in_lifetime) / 0.75 * 143.0 * 1000  # gCO2
 
-water_used = wh_with_pue / 1000 * 0.35  # L
+water_used = wh / 1000 * 0.35  # L
 
 total_co2 = operational_co2 + embodied_co2  # gCO2e
 ```

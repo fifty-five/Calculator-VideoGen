@@ -1,7 +1,8 @@
-"""
-Video Generation Energy (Wh) Predictor
-Tests multiple regression models for each architecture (dit, hybrid, unet)
-Models: LinearRegression, Ridge, SVR, ExtraTrees, RandomForest, GradientBoosting
+"""Video generation energy predictor.
+
+This module trains one regressor per architecture and applies a small
+post-prediction calibration for architectures whose resolution sensitivity was
+underrepresented in the training data.
 """
 
 from pathlib import Path
@@ -32,6 +33,11 @@ class VideoEnergyPredictor(BaseTabularPredictor):
     def _shape_architecture_data(
         self, arch_name: str, df_arch: pd.DataFrame
     ) -> pd.DataFrame:
+        """Apply the architecture-specific training transform.
+
+        Hybrid models were trained with a coarser frame scale, so the frame count
+        is normalized before model fitting.
+        """
         if arch_name == "hybrid":
             df_out = df_arch.copy()
             df_out["frames"] = np.ceil(df_out["frames"] / 49)
@@ -41,6 +47,7 @@ class VideoEnergyPredictor(BaseTabularPredictor):
     def _choose_best(
         self, _arch_name: str, n_samples: int, arch_results: list
     ) -> dict | None:
+        """Select the best Wh model with a small-data preference for Ridge."""
         if not arch_results:
             return None
         if n_samples < 70:
@@ -53,9 +60,49 @@ class VideoEnergyPredictor(BaseTabularPredictor):
     def predict(
         self, arch, steps, res, frames, fps, duration, params, input_type="text"
     ):
-        """Make prediction with uncertainty"""
+        """Estimate the energy consumption in Wh for a generated video.
+
+        This method loads the architecture-specific regression model and scaler,
+        builds the feature vector expected by the model, and returns a prediction
+        of energy usage in watt-hours. It also exposes the model's uncertainty
+        metrics from the best trained configuration.
+
+        The prediction is adjusted for `hybrid` and `unet` architectures using
+        resolution-dependent corrections, while `dit` uses the raw resolution
+        value provided by the caller.
+
+        Args:
+            arch: Architecture name to use for prediction. Expected values are
+                `dit`, `hybrid`, or `unet`.
+            steps: Number of denoising steps used during generation.
+            res: Output resolution value used by the caller.
+            frames: Number of frames in the generated video.
+            fps: Frames per second.
+            duration: Video duration in seconds or minutes, depending on the
+                caller's convention.
+            params: Model parameter count or size indicator.
+            input_type: Input modality, usually `text` or `image`.
+
+        Returns:
+            A dictionary containing:
+                - `energy_wh`: predicted energy consumption in Wh
+                - `uncertainty_wh`: MAE of the best model
+                - `margin_95_wh`: 95% error margin based on RMSE
+                - `r2_score`: R² score of the best model
+                - `model`: name of the selected model
+            If an error occurs, returns a dictionary with an `error` key.
+
+        Raises:
+            No exception is propagated directly: errors are caught and returned
+            as a string in the output dictionary.
+        """
+        # Empirical coefficients used to correct for resolution effects after the
+        # model prediction. They compensate for resolution sensitivity that the
+        # training data did not cover well enough.
         res_factor_hybrid = 0.000045
         res_factor_unet = 0.000012
+        # Representative resolution anchors per architecture so the user input
+        # can be compared against each model family's calibration point.
         refs_res = {"hybrid": 345600, "unet": 589824, "dit": res}
         try:
             model = joblib.load(self.model_dir / f"best_model_wh_{arch}.joblib")
@@ -63,6 +110,7 @@ class VideoEnergyPredictor(BaseTabularPredictor):
             best = self.best_models[arch]
             input_image = 1 if input_type.lower() == "image" else 0
             input_text = 1 if input_type.lower() == "text" else 0
+            # Keep the feature order aligned with the training-time schema.
             res_arch = refs_res[arch]
             x_row = np.array(
                 [
@@ -81,6 +129,15 @@ class VideoEnergyPredictor(BaseTabularPredictor):
             x_scaled = scaler.transform(x_row)
             pred = model.predict(x_scaled)[0]
             pred = max(0, pred)
+            # The base model already sees `params` as an input feature for all
+            # architectures. This extra correction is applied because the impact
+            # of resolution was under-learned for `hybrid` and especially `unet`
+            # in the available training data.
+            #
+            # The `params / 1.5` term for `unet` is an empirical scaling that
+            # makes the resolution correction stronger for larger models.
+            # `hybrid` intentionally stays simpler here to keep the CogVideoX
+            # correction close to a fixed slope.
             if arch == "hybrid":
                 res_delta = (res - res_arch) * res_factor_hybrid
                 pred += res_delta

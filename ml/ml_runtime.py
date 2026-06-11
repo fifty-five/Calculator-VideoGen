@@ -1,8 +1,7 @@
-"""
-Video Generation run_time Predictor
-Tests multiple regression models for each architecture (dit, hybrid, unet)
-Predicts: run_time (seconds)
-Models: LinearRegression, Ridge, SVR, ExtraTrees, RandomForest, GradientBoosting
+"""Video generation run-time predictor.
+
+This module trains one tabular regressor per architecture and keeps the best
+candidate according to architecture-specific selection rules.
 """
 
 from pathlib import Path
@@ -16,9 +15,16 @@ from ml.tabular_base import BaseTabularPredictor
 
 
 def _select_best_run_time(n_samples: int, arch_results: list) -> dict | None:
+    """Pick the best run-time model using a stability-first heuristic.
+
+    Large sample counts favor tree-based models because they usually capture
+    nonlinear effects better. For smaller samples, the function prefers models
+    whose cross-validation score is close to the held-out score.
+    """
     if not arch_results:
         return None
     if n_samples >= 100:
+        # For larger subsets, keep only the more expressive tree-based models.
         tree_models = [
             r
             for r in arch_results
@@ -51,6 +57,11 @@ class Videorun_timePredictor(BaseTabularPredictor):
     def _shape_architecture_data(
         self, arch_name: str, df_arch: pd.DataFrame
     ) -> pd.DataFrame:
+        """Apply the architecture-specific training transform.
+
+        Hybrid models were trained with a coarser frame scale, so the frame count
+        is normalized before model fitting.
+        """
         df_work = df_arch.copy()
         if arch_name == "hybrid":
             df_work.loc[:, "frames"] = np.ceil(df_work["frames"] / 49)
@@ -69,13 +80,14 @@ class Videorun_timePredictor(BaseTabularPredictor):
     def predict(
         self, arch, steps, res, frames, fps, duration, params, input_type="text"
     ):
-        """Make prediction with uncertainty"""
+        """Predict run-time and expose the fitted model's uncertainty metrics."""
         try:
             model = joblib.load(self.model_dir / f"best_model_run_time_{arch}.joblib")
             scaler = joblib.load(self.model_dir / f"scaler_run_time_{arch}.joblib")
             best = self.best_models[arch]
             input_image = 1 if input_type.lower() == "image" else 0
             input_text = 1 if input_type.lower() == "text" else 0
+            # Keep the feature order aligned with the training-time schema.
             feature_names = [
                 "steps",
                 "res",

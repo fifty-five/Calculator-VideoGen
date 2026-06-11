@@ -18,6 +18,7 @@ RUNTIME_METADATA = "runtime_best_models_metadata.joblib"
 
 
 def _load_or_migrate_metadata(model_dir: Path, canonical: Path, legacy_glob: str):
+    """Load metadata from the canonical file or migrate it from legacy names."""
     if canonical.exists():
         return joblib.load(canonical)
     legacy_files = sorted(model_dir.glob(legacy_glob))
@@ -29,19 +30,26 @@ def _load_or_migrate_metadata(model_dir: Path, canonical: Path, legacy_glob: str
 
 
 def emission_factor(country: str, wh: float, run_time: float) -> tuple:
+    """Compute embodied carbon, electricity carbon, and water usage.
+
+    The electricity term is based on a country-specific grid factor, while the
+    embodied term amortizes GPU manufacturing cost over a fixed lifetime.
+    """
     emission_factor_csv = pd.read_csv(carbon_country_csv(), header=0)
     water_usage = 0.35  # L/ kWh
+    pue = 1.56
 
     try:
         country_factor = emission_factor_csv.loc[
             emission_factor_csv["country"] == country
         ]["Emission factor"].values[0]
     except (IndexError, KeyError):
+        # Fall back to a global average when the country is missing from the table.
         country_factor = 220.0  # Glbal avg server EF for electricity
     gpu_embodied_co2 = 143.0  # avg kgCO2e to create a GPU
     gpu_lifetime_years = 3.0
     gpu_utilization = 0.75
-    carbon_electricity = country_factor * (wh / 1000)  # gCO2
+    carbon_electricity = country_factor * (wh * pue / 1000)  # gCO2
     water_used = wh / 1000 * water_usage  # l/kWh
 
     seconds_in_3_years = 60 * 60 * 24 * 365.25 * gpu_lifetime_years
@@ -68,8 +76,7 @@ def run_ml(
     input_type: str = "text",
     country: str = "France",
 ):
-    """
-    Predict energy and run_time with uncertainties
+    """Predict energy, runtime, carbon, and water with uncertainty bounds.
 
     Args:
         steps: denoising steps
@@ -85,6 +92,7 @@ def run_ml(
     """
 
     if any(v <= 0 for v in (steps, res, frames, params, fps, duration)):
+        # Reject obviously invalid inputs early instead of letting the model layer fail.
         return {
             "error": f"Invalid input: steps={steps}, res={res}, frames={frames}, params={params}. All must be > 0"
         }
@@ -102,6 +110,7 @@ def run_ml(
         model_dir, energy_path, "best_models_wh_*.joblib"
     )
     if e_meta is not None:
+        # Reuse cached ranking results when available to avoid retraining.
         energy_predictor.best_models = e_meta
     else:
         energy_predictor.train_all_architectures()
@@ -111,6 +120,7 @@ def run_ml(
         model_dir, runtime_path, "best_models_run_time_*.joblib"
     )
     if r_meta is not None:
+        # Runtime uses the same cache pattern as energy, but with its own models.
         run_time_predictor.best_models = r_meta
     else:
         run_time_predictor.train_all_architectures()
@@ -129,6 +139,7 @@ def run_ml(
     if "error" in pred_run_time:
         return {"error": f"run_time prediction failed: {pred_run_time['error']}"}
 
+    # Convert point estimates into operational and embodied environmental impact.
     total_carbon_embodied, total_carbon_electricity, total_water_used = emission_factor(
         country, pred_wh["energy_wh"], pred_run_time["run_time_s"]
     )
@@ -149,9 +160,9 @@ def run_ml(
         pred_run_time["run_time_s"] + pred_run_time["margin_95_s"],
     )
 
+    # Keep a small floor so the output stays numerically stable and non-zero.
     min_wh = 2.0  # Minimum energy value from dataset
     min_run_time = 4.0  # Minimum run_time value from dataset
-
     return {
         "energy": {
             "value_wh": max(min_wh, round(pred_wh["energy_wh"], 2)),
@@ -208,8 +219,8 @@ def run_ml(
             "g_co2_electricity": round(max(0.01, total_carbon_electricity), 2),
         },
         "water_used": {
-            "value_water_used": round(max(0.01, total_water_used), 2),
-            "best_case_water_used": round(max(0.01, best_case_water_used), 2),
-            "worst_case_water_used": round(max(0.01, worst_case_water_used), 2),
+            "value_water_used": round(max(0.001, total_water_used), 3),
+            "best_case_water_used": round(max(0.001, best_case_water_used), 3),
+            "worst_case_water_used": round(max(0.001, worst_case_water_used), 3),
         },
     }
