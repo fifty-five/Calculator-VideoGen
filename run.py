@@ -15,7 +15,7 @@ MODEL_CONFIGS = {
     "Lumiere": {"arch": "unet", "params": 5.0},
     "MagicVideo-V2": {"arch": "unet", "params": 1.5},
     # --- DiT models ---
-    "Sora": {"arch": "dit", "params": 1.3},  # Here we put SORA on 1.3 billions parameters so it is optimised on result
+    "Sora": {"arch": "dit", "params": 1.0},  # Here we put SORA on 1.3 billions parameters so it is optimised on result
     "WAN2.1-T2V-1.3B": {"arch": "dit", "params": 1.3},
     "WAN2.1-T2V-14B": {"arch": "dit", "params": 14.0},
     "Mochi 1": {"arch": "dit", "params": 10.0},
