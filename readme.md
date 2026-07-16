@@ -31,7 +31,7 @@ This calculator predicts the complete environmental impact of video generation u
 - **Caching**: First run trains both stacks (~35s), subsequent runs load joblib from `ml/model/` (~3s when cache is warm)
 
 ✅ **Architecture Support**
-- **DiT** (Diffusion Transformer): e.g. Sora, Mochi, WAN2.1, VEO, Latte-XL
+- **DiT** (Diffusion Transformer): e.g. Sora, Mochi, WAN2.1, Latte-XL
 - **U-Net**: AnimateDiff, Stable Video Diffusion, Pika, Lumiere
 - **Hybrid**: CogVideoX (5B, 2B)
 
