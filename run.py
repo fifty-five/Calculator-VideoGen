@@ -20,7 +20,6 @@ MODEL_CONFIGS = {
     "WAN2.1-T2V-14B": {"arch": "dit", "params": 14.0},
     "Mochi 1": {"arch": "dit", "params": 10.0},
     "ContentV": {"arch": "dit", "params": 8.0},
-    "VEO": {"arch": "dit", "params": 3.77},  # Here we don't really know the real number of params for VEO so the params is optimised on the test data
     "Latte-XL": {"arch": "dit", "params": 0.67},
     # --- Hybrid (Transformer + 3D VAE) ---
     "CogVideoX-5B": {"arch": "hybrid", "params": 5.0},

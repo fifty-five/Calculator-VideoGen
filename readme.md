@@ -47,7 +47,6 @@ This calculator predicts the complete environmental impact of video generation u
 
 ### DiT Architecture (Diffusion Transformer)
 - **Sora** (10B params)
-- **VEO** (10B params) — use this exact name with `--model` (case-sensitive; matches [`run.py`](run.py) `MODEL_CONFIGS`)
 - **Latte-XL** (0.67B params)
 - **WAN2.1-T2V-1.3B** (1.3B params)
 - **WAN2.1-T2V-14B** (14B params)
